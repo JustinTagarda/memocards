@@ -25,21 +25,26 @@ interface ResourceState<T> {
   loading: boolean
 }
 
+const EMPTY_FOLDERS: Folder[] = []
+const EMPTY_DECKS: Deck[] = []
+const EMPTY_CARDS: Card[] = []
+const EMPTY_ACTIVITY: ActivityLog[] = []
+const EMPTY_SESSIONS: StudySession[] = []
+
 function useResource<T>(
-  enabled: boolean,
+  resourceKey: string | null,
   initialValue: T,
   load: () => Promise<T>,
 ): ResourceState<T> {
   const [data, setData] = useState<T>(initialValue)
-  const [loading, setLoading] = useState(enabled)
+  const [loading, setLoading] = useState(Boolean(resourceKey))
   const runLoad = useEffectEvent(load)
-  const getInitialValue = useEffectEvent(() => initialValue)
 
   useEffect(() => {
     let active = true
 
-    if (!enabled) {
-      setData(getInitialValue())
+    if (!resourceKey) {
+      setData(initialValue)
       setLoading(false)
       return
     }
@@ -68,35 +73,35 @@ function useResource<T>(
       active = false
       unsubscribe()
     }
-  }, [enabled, getInitialValue, runLoad])
+  }, [initialValue, resourceKey])
 
   return { data, loading }
 }
 
 export function useUserProfile(uid: string | undefined): ResourceState<UserProfile | null> {
-  return useResource(Boolean(uid), null, () => fetchUserProfile(uid!))
+  return useResource(uid ?? null, null, () => fetchUserProfile(uid!))
 }
 
 export function useFolders(uid: string | undefined): ResourceState<Folder[]> {
-  return useResource(Boolean(uid), [], () => fetchFolders(uid!))
+  return useResource(uid ?? null, EMPTY_FOLDERS, () => fetchFolders(uid!))
 }
 
 export function useDecks(uid: string | undefined): ResourceState<Deck[]> {
-  return useResource(Boolean(uid), [], () => fetchDecks(uid!))
+  return useResource(uid ?? null, EMPTY_DECKS, () => fetchDecks(uid!))
 }
 
 export function useDeck(uid: string | undefined, deckId: string | undefined): ResourceState<Deck | null> {
-  return useResource(Boolean(uid && deckId), null, () => fetchDeck(uid!, deckId!))
+  return useResource(uid && deckId ? `${uid}:${deckId}` : null, null, () => fetchDeck(uid!, deckId!))
 }
 
 export function useCards(uid: string | undefined, deckId: string | undefined): ResourceState<Card[]> {
-  return useResource(Boolean(uid && deckId), [], () => fetchCards(uid!, deckId!))
+  return useResource(uid && deckId ? `${uid}:${deckId}` : null, EMPTY_CARDS, () => fetchCards(uid!, deckId!))
 }
 
 export function useRecentActivity(uid: string | undefined): ResourceState<ActivityLog[]> {
-  return useResource(Boolean(uid), [], () => fetchRecentActivity(uid!))
+  return useResource(uid ?? null, EMPTY_ACTIVITY, () => fetchRecentActivity(uid!))
 }
 
 export function useRecentSessions(uid: string | undefined): ResourceState<StudySession[]> {
-  return useResource(Boolean(uid), [], () => fetchRecentSessions(uid!))
+  return useResource(uid ?? null, EMPTY_SESSIONS, () => fetchRecentSessions(uid!))
 }
