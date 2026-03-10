@@ -1,25 +1,18 @@
-function readPublic(name: 'NEXT_PUBLIC_SUPABASE_URL' | 'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY' | 'NEXT_PUBLIC_SITE_URL') {
-  return process.env[name] ?? ''
-}
-
-function readServer(
-  name:
-    | 'SUPABASE_SERVICE_ROLE_KEY'
-    | 'GOOGLE_CLOUD_PROJECT_ID'
-    | 'GOOGLE_CLOUD_CLIENT_EMAIL'
-    | 'GOOGLE_CLOUD_PRIVATE_KEY',
-) {
-  return process.env[name] ?? ''
-}
-
 export const env = {
-  supabaseUrl: readPublic('NEXT_PUBLIC_SUPABASE_URL'),
-  supabasePublishableKey: readPublic('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'),
-  siteUrl: readPublic('NEXT_PUBLIC_SITE_URL') || 'http://localhost:3000',
-  supabaseServiceRoleKey: readServer('SUPABASE_SERVICE_ROLE_KEY'),
-  googleCloudProjectId: readServer('GOOGLE_CLOUD_PROJECT_ID'),
-  googleCloudClientEmail: readServer('GOOGLE_CLOUD_CLIENT_EMAIL'),
-  googleCloudPrivateKey: readServer('GOOGLE_CLOUD_PRIVATE_KEY').replace(/\\n/g, '\n'),
+  supabaseUrl:
+    (process.env as { NEXT_PUBLIC_SUPABASE_URL?: string }).NEXT_PUBLIC_SUPABASE_URL ?? '',
+  supabasePublishableKey:
+    (process.env as { NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?: string }).NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '',
+  siteUrl:
+    (process.env as { NEXT_PUBLIC_SITE_URL?: string }).NEXT_PUBLIC_SITE_URL || 'http://localhost:3000',
+  supabaseServiceRoleKey:
+    (process.env as { SUPABASE_SERVICE_ROLE_KEY?: string }).SUPABASE_SERVICE_ROLE_KEY ?? '',
+  googleCloudProjectId:
+    (process.env as { GOOGLE_CLOUD_PROJECT_ID?: string }).GOOGLE_CLOUD_PROJECT_ID ?? '',
+  googleCloudClientEmail:
+    (process.env as { GOOGLE_CLOUD_CLIENT_EMAIL?: string }).GOOGLE_CLOUD_CLIENT_EMAIL ?? '',
+  googleCloudPrivateKey:
+    ((process.env as { GOOGLE_CLOUD_PRIVATE_KEY?: string }).GOOGLE_CLOUD_PRIVATE_KEY ?? '').replace(/\\n/g, '\n'),
 }
 
 export const hasSupabaseEnvironment = Boolean(env.supabaseUrl && env.supabasePublishableKey)
