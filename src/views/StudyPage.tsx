@@ -38,7 +38,7 @@ export function StudyPage() {
     return null
   }
 
-  if (deckLoading || cardsLoading || !deck) {
+  if (!deck || (deckLoading && !deck) || (cardsLoading && cards.length === 0)) {
     return <div className="empty-panel">Loading study session...</div>
   }
 
