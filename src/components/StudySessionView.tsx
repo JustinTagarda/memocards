@@ -20,6 +20,31 @@ interface StudySessionViewProps {
   onPlayAudio: (card: Card, side: 'prompt' | 'answer') => Promise<void>
 }
 
+function buildStudyQueueIds(
+  cards: Card[],
+  mode: StudyMode,
+  favoritesOnly: boolean,
+  shuffle: boolean,
+) {
+  let nextQueue = cards.filter((card) => (favoritesOnly ? card.isFavorite : true))
+
+  if (mode === 'review') {
+    nextQueue = nextQueue.filter((card) => card.reviewState.dueAt <= new Date().toISOString())
+  }
+
+  if (mode === 'learn') {
+    nextQueue = [...nextQueue].sort(
+      (left, right) => left.studyStats.totalReviews - right.studyStats.totalReviews,
+    )
+  }
+
+  if (shuffle) {
+    nextQueue = shuffleArray(nextQueue)
+  }
+
+  return nextQueue.map((card) => card.id)
+}
+
 const assessments: Array<{ value: SelfAssessment; label: string; hint: string }> = [
   { value: 'again', label: 'Again', hint: 'Reset card' },
   { value: 'hard', label: 'Hard', hint: 'Sooner review' },
@@ -38,6 +63,9 @@ export function StudySessionView({
   const [mode, setMode] = useState<StudyMode>(deck.preferences.defaultMode)
   const [shuffle, setShuffle] = useState(deck.preferences.shuffleByDefault)
   const [favoritesOnly, setFavoritesOnly] = useState(false)
+  const [sessionQueueIds, setSessionQueueIds] = useState<string[]>(() =>
+    buildStudyQueueIds(cards, deck.preferences.defaultMode, false, deck.preferences.shuffleByDefault),
+  )
   const [revealed, setRevealed] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [startedAt, setStartedAt] = useState(new Date().toISOString())
@@ -48,34 +76,26 @@ export function StudySessionView({
   const [saved, setSaved] = useState(false)
   const [evaluationStatus, setEvaluationStatus] = useState<string | null>(null)
 
-  const studyQueue = useMemo(() => {
-    let nextQueue = cards.filter((card) => (favoritesOnly ? card.isFavorite : true))
-
-    if (mode === 'review') {
-      nextQueue = nextQueue.filter((card) => card.reviewState.dueAt <= new Date().toISOString())
-    }
-
-    if (mode === 'learn') {
-      nextQueue = [...nextQueue].sort(
-        (left, right) => left.studyStats.totalReviews - right.studyStats.totalReviews,
-      )
-    }
-
-    if (shuffle) {
-      nextQueue = shuffleArray(nextQueue)
-    }
-
-    return nextQueue
-  }, [cards, favoritesOnly, mode, shuffle])
+  const cardsById = useMemo(
+    () => new Map(cards.map((card) => [card.id, card])),
+    [cards],
+  )
+  const studyQueue = useMemo(
+    () => sessionQueueIds.map((cardId) => cardsById.get(cardId)).filter((card): card is Card => Boolean(card)),
+    [cardsById, sessionQueueIds],
+  )
 
   const currentCard = studyQueue[currentIndex] ?? null
   const progress = studyQueue.length === 0 ? 0 : Math.min(100, (currentIndex / studyQueue.length) * 100)
-  const sessionFinished = studyQueue.length === 0 || currentIndex >= studyQueue.length
+  const sessionFinished = studyQueue.length > 0 && currentIndex >= studyQueue.length
 
   useEffect(() => {
     setMode(deck.preferences.defaultMode)
     setShuffle(deck.preferences.shuffleByDefault)
     setFavoritesOnly(false)
+    setSessionQueueIds(
+      buildStudyQueueIds(cards, deck.preferences.defaultMode, false, deck.preferences.shuffleByDefault),
+    )
     setStartedAt(new Date().toISOString())
     setRevealed(false)
     setCurrentIndex(0)
@@ -88,6 +108,7 @@ export function StudySessionView({
   }, [deck.id, deck.preferences.defaultMode, deck.preferences.shuffleByDefault])
 
   useEffect(() => {
+    setSessionQueueIds(buildStudyQueueIds(cards, mode, favoritesOnly, shuffle))
     setCurrentIndex(0)
     setStartedAt(new Date().toISOString())
     setResults([])
@@ -97,6 +118,20 @@ export function StudySessionView({
     setSaved(false)
     setEvaluationStatus(null)
   }, [mode, shuffle, favoritesOnly])
+
+  async function handleFinish(completedResults = results) {
+    if (saving || saved || completedResults.length === 0) {
+      return
+    }
+
+    setSaving(true)
+    try {
+      await onComplete(mode, startedAt, completedResults)
+      setSaved(true)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function handleAssessment(assessment: SelfAssessment) {
     if (!currentCard) {
@@ -110,33 +145,26 @@ export function StudySessionView({
 
     await onReview(currentCard, assessment, mode, responseText)
 
-    setResults((current) => [
-      ...current,
+    const nextResults = [
+      ...results,
       {
         cardId: currentCard.id,
         assessment,
         wasCorrect: assessment !== 'again',
         responseText,
       },
-    ])
-    setCurrentIndex((value) => value + 1)
+    ]
+    const nextIndex = currentIndex + 1
+
+    setResults(nextResults)
+    setCurrentIndex(nextIndex)
     setRevealed(false)
     setTypedAnswer('')
     setSelectedChoiceId(null)
     setEvaluationStatus(null)
-  }
 
-  async function handleFinish() {
-    if (saving || saved) {
-      return
-    }
-
-    setSaving(true)
-    try {
-      await onComplete(mode, startedAt, results)
-      setSaved(true)
-    } finally {
-      setSaving(false)
+    if (nextIndex >= studyQueue.length) {
+      void handleFinish(nextResults)
     }
   }
 
@@ -145,6 +173,49 @@ export function StudySessionView({
       void handleFinish()
     }
   }, [results.length, saved, saving, sessionFinished])
+
+  if (sessionFinished) {
+    const accuracy =
+      results.length === 0
+        ? 0
+        : Math.round((results.filter((result) => result.wasCorrect).length / results.length) * 100)
+    return (
+      <section className="session-summary">
+        <p className="eyebrow">Session complete</p>
+        <h2>{deck.title}</h2>
+        <div className="summary-grid">
+          <article>
+            <strong>{results.length}</strong>
+            <span>cards studied</span>
+          </article>
+          <article>
+            <strong>{accuracy}%</strong>
+            <span>accuracy</span>
+          </article>
+          <article>
+            <strong>{mode}</strong>
+            <span>mode</span>
+          </article>
+        </div>
+        <p>{saved ? 'Saved to Supabase and streak updated.' : saving ? 'Saving session...' : 'Wrapping up.'}</p>
+        <button
+          className="ghost-button"
+          type="button"
+          onClick={() => {
+            setSessionQueueIds(buildStudyQueueIds(cards, mode, favoritesOnly, shuffle))
+            setStartedAt(new Date().toISOString())
+            setCurrentIndex(0)
+            setResults([])
+            setRevealed(false)
+            setSaved(false)
+          }}
+        >
+          <RotateCcw size={16} />
+          Study again
+        </button>
+      </section>
+    )
+  }
 
   if (studyQueue.length === 0) {
     return (
@@ -177,45 +248,6 @@ export function StudySessionView({
             Favorites only
           </label>
         </div>
-      </section>
-    )
-  }
-
-  if (sessionFinished) {
-    const accuracy = results.length === 0 ? 0 : Math.round((results.filter((result) => result.wasCorrect).length / results.length) * 100)
-    return (
-      <section className="session-summary">
-        <p className="eyebrow">Session complete</p>
-        <h2>{deck.title}</h2>
-        <div className="summary-grid">
-          <article>
-            <strong>{results.length}</strong>
-            <span>cards studied</span>
-          </article>
-          <article>
-            <strong>{accuracy}%</strong>
-            <span>accuracy</span>
-          </article>
-          <article>
-            <strong>{mode}</strong>
-            <span>mode</span>
-          </article>
-        </div>
-        <p>{saved ? 'Saved to Supabase and streak updated.' : saving ? 'Saving session...' : 'Wrapping up.'}</p>
-        <button
-          className="ghost-button"
-          type="button"
-          onClick={() => {
-            setStartedAt(new Date().toISOString())
-            setCurrentIndex(0)
-            setResults([])
-            setRevealed(false)
-            setSaved(false)
-          }}
-        >
-          <RotateCcw size={16} />
-          Study again
-        </button>
       </section>
     )
   }
