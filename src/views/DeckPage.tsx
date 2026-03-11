@@ -260,8 +260,8 @@ export function DeckPage() {
         />
       )}
 
-      <section className="deck-workspace">
-        <div className="card-list">
+      <section className="deck-workspace deck-workspace--single">
+        <div className="card-list card-list--deck">
           {filteredCards.length === 0 && (
             <article className="empty-panel">
               <strong>No cards match this filter</strong>
@@ -272,21 +272,21 @@ export function DeckPage() {
           {filteredCards.map((card) => (
             <article key={card.id} className="card-row card-row--deck">
               <div className="card-row__copy">
-                <div className="card-row__summary">
-                  <span className="pill">{card.type.replace('_', ' ')}</span>
+                <span className="pill">{card.type.replace('_', ' ')}</span>
+                <div className="card-row__body">
                   <h2>{getCardPrompt(card)}</h2>
-                </div>
-                <div className="card-row__answerline">
-                  <p>{card.answer || card.expectedAnswer.canonical || 'No answer yet.'}</p>
-                  {card.tags.length > 0 && (
-                    <div className="tag-row">
-                      {card.tags.map((tag) => (
-                        <span key={tag} className="tag-pill">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <div className="card-row__answerline">
+                    <p>{card.answer || card.expectedAnswer.canonical || 'No answer yet.'}</p>
+                    {card.tags.length > 0 && (
+                      <div className="tag-row">
+                        {card.tags.map((tag) => (
+                          <span key={tag} className="tag-pill">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="card-row__meta card-row__meta--deck">
@@ -336,35 +336,35 @@ export function DeckPage() {
             </article>
           ))}
         </div>
+      </section>
 
-        <aside className="dashboard-side">
-          <article className="side-panel side-panel--compact">
-            <div className="panel-heading">
-              <strong>Long-answer cards</strong>
-            </div>
-            <p>
-              Longer response cards can store keywords, model answers, and extra notes so you can review
-              them more clearly later.
-            </p>
-          </article>
+      <section className="deck-bottom-panels">
+        <article className="side-panel side-panel--compact side-panel--deck-bottom">
+          <div className="panel-heading">
+            <strong>Long-answer cards</strong>
+          </div>
+          <p>
+            Longer response cards can store keywords, model answers, and extra notes so you can review
+            them more clearly later.
+          </p>
+        </article>
 
-          <article className="side-panel side-panel--compact">
-            <div className="panel-heading">
-              <strong>Audio</strong>
-            </div>
-            <p>
-              Tap audio on a study card when you want to hear the question or answer out loud.
-            </p>
-          </article>
+        <article className="side-panel side-panel--compact side-panel--deck-bottom">
+          <div className="panel-heading">
+            <strong>Audio</strong>
+          </div>
+          <p>
+            Tap audio on a study card when you want to hear the question or answer out loud.
+          </p>
+        </article>
 
-          <article className="side-panel side-panel--compact">
-            <div className="panel-heading">
-              <strong>Your settings</strong>
-            </div>
-            <p>Voice: {profile?.settings.defaultVoice ?? 'Not set'}</p>
-            <p>Auto-play setting: {profile?.settings.autoPlayAudio ? 'On' : 'Off'}</p>
-          </article>
-        </aside>
+        <article className="side-panel side-panel--compact side-panel--deck-bottom">
+          <div className="panel-heading">
+            <strong>Your settings</strong>
+          </div>
+          <p>Voice: {profile?.settings.defaultVoice ?? 'Not set'}</p>
+          <p>Auto-play setting: {profile?.settings.autoPlayAudio ? 'On' : 'Off'}</p>
+        </article>
       </section>
 
       {showDeckModal && (

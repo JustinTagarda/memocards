@@ -683,6 +683,20 @@ small,
   align-items: start;
 }
 
+.deck-bottom-panels {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.deck-bottom-panels {
+  display: none;
+}
+
+.card-list--deck {
+  align-content: start;
+  gap: 0.7rem;
+}
+
 .hero-panel__copy {
   display: grid;
   gap: 0.8rem;
@@ -1219,6 +1233,18 @@ textarea:focus {
   padding: 1rem 1.05rem;
 }
 
+.side-panel--deck-bottom {
+  gap: 0.45rem;
+  min-height: 8.75rem;
+  padding: 0.85rem 0.95rem;
+  align-content: start;
+}
+
+.side-panel--deck-bottom p {
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
 .side-panel--compact .list-stack {
   gap: 0.6rem;
 }
@@ -1465,18 +1491,20 @@ textarea:focus {
 
 .card-row--deck {
   gap: 0.4rem;
-  padding: 0.25rem 0.3rem;
+  padding: 5px;
 }
 
 .card-row--deck .card-row__copy {
-  gap: 0.18rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.18rem 0.45rem;
 }
 
-.card-row__summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem 0.45rem;
+.card-row__body {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
 }
 
 .card-row--deck h2 {
@@ -1498,6 +1526,7 @@ textarea:focus {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.3rem 0.45rem;
+  min-width: 0;
 }
 
 .card-row--deck p {
@@ -2055,6 +2084,20 @@ textarea:focus {
   .dashboard-grid,
   .deck-workspace {
     grid-template-columns: minmax(0, 1.45fr) minmax(18rem, 0.95fr);
+  }
+
+  .deck-workspace--single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .deck-bottom-panels {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .card-list--deck {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
   }
 
   .dashboard-hero,
