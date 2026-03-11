@@ -23,6 +23,10 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+function isIgnorableAuthError(message: string) {
+  return message === 'Auth session missing!'
+}
+
 export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
@@ -42,7 +46,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         return
       }
 
-      if (authError) {
+      if (authError && !isIgnorableAuthError(authError.message)) {
         setError(authError.message)
       }
 
