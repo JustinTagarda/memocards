@@ -3,7 +3,8 @@
 import { Brain, CloudUpload, Lock, Sparkles, Volume2 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { isEmbeddedBrowser } from '../lib/embeddedBrowser'
 import { hasSupabaseEnvironment } from '../lib/env'
 import { useAuth } from '../hooks/useAuth'
 
@@ -38,12 +39,32 @@ const features = [
 export function LandingPage() {
   const router = useRouter()
   const { user, signIn, loading, error } = useAuth()
+  const [embeddedBrowser, setEmbeddedBrowser] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
 
   useEffect(() => {
     if (user) {
       router.replace('/app')
     }
   }, [router, user])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    setEmbeddedBrowser(isEmbeddedBrowser(window.navigator.userAgent))
+  }, [])
+
+  async function copySiteLink() {
+    if (typeof window === 'undefined' || !navigator.clipboard) {
+      return
+    }
+
+    await navigator.clipboard.writeText(window.location.href)
+    setCopiedLink(true)
+    window.setTimeout(() => setCopiedLink(false), 2000)
+  }
 
   return (
     <div className="landing-shell">
@@ -73,20 +94,37 @@ export function LandingPage() {
             </div>
           )}
 
+          {embeddedBrowser && (
+            <div className="warning-banner">
+              Google sign-in is blocked inside in-app browsers like Messenger. Open MemoCards in
+              Safari or Chrome first, then sign in there.
+            </div>
+          )}
+
           {error && <div className="warning-banner">{error}</div>}
 
           <div className="hero-actions">
             <button
               className="primary-button"
-              disabled={loading || !hasSupabaseEnvironment}
+              disabled={loading || !hasSupabaseEnvironment || embeddedBrowser}
               type="button"
               onClick={() => void signIn()}
             >
-              {loading ? 'Getting ready...' : 'Start with Google'}
+              {embeddedBrowser
+                ? 'Open in Safari or Chrome'
+                : loading
+                  ? 'Getting ready...'
+                  : 'Start with Google'}
             </button>
-            <a className="ghost-button" href="#features">
-              See how it works
-            </a>
+            {embeddedBrowser ? (
+              <button className="ghost-button" type="button" onClick={() => void copySiteLink()}>
+                {copiedLink ? 'Link copied' : 'Copy site link'}
+              </button>
+            ) : (
+              <a className="ghost-button" href="#features">
+                See how it works
+              </a>
+            )}
           </div>
 
           <div className="landing-notes">
