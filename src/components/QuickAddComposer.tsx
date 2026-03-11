@@ -1,77 +1,105 @@
 'use client'
 
 import { ClipboardPaste, Expand, Plus } from 'lucide-react'
-import { useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { loadQuickAddState, saveQuickAddState, type QuickAddMode } from '../lib/cardEntry'
 import type { CardDraft } from '../types/models'
 import {
   QUICK_ADD_TYPE_META,
   parseQuickAddInput,
   parseQuickAddLine,
+  summarizeQuickAddDraft,
   type QuickAddCardType,
-  type QuickAddInvalidLine,
+  type QuickAddPreviewResult,
 } from '../lib/quickAdd'
 
 interface QuickAddComposerProps {
+  deckId: string
   disabled?: boolean
+  preferredType?: QuickAddCardType
   onExpand: (draft: CardDraft) => void
   onSave: (draft: CardDraft) => Promise<void>
 }
 
-type QuickAddMode = 'single' | 'bulk'
-
-function hasMultipleEntries(value: string) {
-  return value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean).length > 1
-}
-
-export function QuickAddComposer({ disabled = false, onExpand, onSave }: QuickAddComposerProps) {
-  const [mode, setMode] = useState<QuickAddMode>('single')
-  const [type, setType] = useState<QuickAddCardType>('basic')
-  const [value, setValue] = useState('')
+export function QuickAddComposer({
+  deckId,
+  disabled = false,
+  preferredType = 'basic',
+  onExpand,
+  onSave,
+}: QuickAddComposerProps) {
+  const storedState = useMemo(() => loadQuickAddState(deckId), [deckId])
+  const [mode, setMode] = useState<QuickAddMode>(storedState.mode)
+  const [type, setType] = useState<QuickAddCardType>(storedState.type ?? preferredType)
+  const [singleValue, setSingleValue] = useState(storedState.singleValue)
+  const [bulkValue, setBulkValue] = useState(storedState.bulkValue)
+  const [preview, setPreview] = useState<QuickAddPreviewResult | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  const [invalidLines, setInvalidLines] = useState<QuickAddInvalidLine[]>([])
+  const [restoredDraft, setRestoredDraft] = useState(Boolean(storedState.singleValue || storedState.bulkValue))
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const meta = QUICK_ADD_TYPE_META[type]
+  const currentValue = mode === 'single' ? singleValue : bulkValue
+
+  useEffect(() => {
+    saveQuickAddState(deckId, {
+      mode,
+      type,
+      singleValue,
+      bulkValue,
+    })
+  }, [bulkValue, deckId, mode, singleValue, type])
+
+  useEffect(() => {
+    if (!storedState.singleValue && !storedState.bulkValue) {
+      setType(preferredType)
+    }
+  }, [preferredType, storedState.bulkValue, storedState.singleValue])
 
   const canExpand = useMemo(() => {
     if (mode !== 'single' || disabled) {
       return false
     }
 
-    if (hasMultipleEntries(value)) {
-      return false
-    }
-
     try {
-      parseQuickAddLine(value, type)
+      parseQuickAddLine(singleValue, type)
       return true
     } catch {
       return false
     }
-  }, [disabled, mode, type, value])
+  }, [disabled, mode, singleValue, type])
 
   function resetFeedback() {
     setError(null)
     setSuccess(null)
-    setInvalidLines([])
+  }
+
+  function clearPreview() {
+    setPreview(null)
+  }
+
+  function updateValue(nextValue: string) {
+    if (mode === 'single') {
+      setSingleValue(nextValue)
+    } else {
+      setBulkValue(nextValue)
+    }
+
+    if (error || success || preview) {
+      resetFeedback()
+      clearPreview()
+    }
   }
 
   async function saveSingle() {
     resetFeedback()
-
-    if (hasMultipleEntries(value)) {
-      setError('Single entry saves one line at a time. Switch to Paste many for batches.')
-      return
-    }
+    clearPreview()
 
     let draft: CardDraft
     try {
-      draft = parseQuickAddLine(value, type)
+      draft = parseQuickAddLine(singleValue, type)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to parse this card.')
       return
@@ -80,8 +108,9 @@ export function QuickAddComposer({ disabled = false, onExpand, onSave }: QuickAd
     setSaving(true)
     try {
       await onSave(draft)
-      setValue('')
+      setSingleValue('')
       setSuccess('Card added.')
+      setRestoredDraft(false)
       inputRef.current?.focus()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to save this card.')
@@ -90,35 +119,51 @@ export function QuickAddComposer({ disabled = false, onExpand, onSave }: QuickAd
     }
   }
 
-  async function saveBulk() {
+  function buildPreview() {
     resetFeedback()
-    const { drafts, invalidLines: parseErrors } = parseQuickAddInput(value, type)
+    const nextPreview = parseQuickAddInput(bulkValue, type)
+    setPreview(nextPreview)
 
-    if (drafts.length === 0) {
-      setError(parseErrors.length > 0 ? 'No valid lines to add.' : 'Paste one or more lines first.')
-      setInvalidLines(parseErrors)
+    if (nextPreview.drafts.length === 0) {
+      setError(nextPreview.invalidLines.length > 0 ? 'No valid cards found in this paste.' : 'Paste one or more cards first.')
+      return null
+    }
+
+    if (nextPreview.invalidLines.length > 0) {
+      setSuccess(`Found ${nextPreview.drafts.length} valid card${nextPreview.drafts.length === 1 ? '' : 's'} and ${nextPreview.invalidLines.length} issue${nextPreview.invalidLines.length === 1 ? '' : 's'}.`)
+    } else {
+      setSuccess(`Previewing ${nextPreview.drafts.length} card${nextPreview.drafts.length === 1 ? '' : 's'}.`)
+    }
+
+    return nextPreview
+  }
+
+  async function saveBulk() {
+    const activePreview = preview ?? buildPreview()
+    if (!activePreview || activePreview.drafts.length === 0) {
       return
     }
 
     setSaving(true)
-    let savedCount = 0
+    resetFeedback()
 
+    let savedCount = 0
     try {
-      for (const draft of drafts) {
-        await onSave(draft)
+      for (const item of activePreview.drafts) {
+        await onSave(item.draft)
         savedCount += 1
       }
 
-      setValue('')
-      setInvalidLines(parseErrors)
+      setBulkValue('')
+      setPreview(null)
+      setRestoredDraft(false)
       setSuccess(
-        parseErrors.length > 0
-          ? `Added ${savedCount} card${savedCount === 1 ? '' : 's'}. ${parseErrors.length} line${parseErrors.length === 1 ? '' : 's'} skipped.`
+        activePreview.invalidLines.length > 0
+          ? `Added ${savedCount} card${savedCount === 1 ? '' : 's'}. ${activePreview.invalidLines.length} row${activePreview.invalidLines.length === 1 ? '' : 's'} still need attention.`
           : `Added ${savedCount} card${savedCount === 1 ? '' : 's'}.`,
       )
       inputRef.current?.focus()
     } catch (reason) {
-      setInvalidLines(parseErrors)
       setError(
         savedCount > 0
           ? `Saved ${savedCount} card${savedCount === 1 ? '' : 's'} before a save failed.`
@@ -135,20 +180,30 @@ export function QuickAddComposer({ disabled = false, onExpand, onSave }: QuickAd
     resetFeedback()
 
     try {
-      onExpand(parseQuickAddLine(value, type))
+      onExpand(parseQuickAddLine(singleValue, type))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to expand this card.')
     }
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (mode !== 'single' || disabled || saving) {
+    if (disabled || saving) {
       return
     }
 
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (mode === 'single' && event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       void saveSingle()
+      return
+    }
+
+    if (mode === 'bulk' && (event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+      event.preventDefault()
+      if (preview) {
+        void saveBulk()
+      } else {
+        buildPreview()
+      }
     }
   }
 
@@ -158,8 +213,8 @@ export function QuickAddComposer({ disabled = false, onExpand, onSave }: QuickAd
         <div>
           <p className="eyebrow">Quick Add</p>
           <h2>Add cards faster</h2>
+          <p className="quick-add-intro">Full editor stays available for tags, notes, and richer setup.</p>
         </div>
-        <small>Full editor stays available for tags, notes, and richer setup.</small>
       </div>
 
       <div className="quick-add-toolbar">
@@ -172,6 +227,7 @@ export function QuickAddComposer({ disabled = false, onExpand, onSave }: QuickAd
             onClick={() => {
               setMode('single')
               resetFeedback()
+              clearPreview()
             }}
           >
             <Plus size={16} />
@@ -185,6 +241,7 @@ export function QuickAddComposer({ disabled = false, onExpand, onSave }: QuickAd
             onClick={() => {
               setMode('bulk')
               resetFeedback()
+              clearPreview()
             }}
           >
             <ClipboardPaste size={16} />
@@ -199,6 +256,7 @@ export function QuickAddComposer({ disabled = false, onExpand, onSave }: QuickAd
             onChange={(event) => {
               setType(event.target.value as QuickAddCardType)
               resetFeedback()
+              clearPreview()
             }}
           >
             <option value="basic">Basic</option>
@@ -215,16 +273,16 @@ export function QuickAddComposer({ disabled = false, onExpand, onSave }: QuickAd
       </div>
 
       <label className="field">
-        <span>{mode === 'single' ? meta.inputLabel : 'Paste one card per line'}</span>
+        <span>{mode === 'single' ? meta.inputLabel : 'Paste cards to preview before saving'}</span>
         <textarea
           ref={inputRef}
-          rows={mode === 'single' ? 2 : 7}
+          rows={mode === 'single' ? 3 : 8}
           placeholder={mode === 'single' ? meta.placeholder : `${meta.example}\n${meta.example}`}
-          value={value}
+          value={currentValue}
           onChange={(event) => {
-            setValue(event.target.value)
-            if (error || success || invalidLines.length > 0) {
-              resetFeedback()
+            updateValue(event.target.value)
+            if (restoredDraft) {
+              setRestoredDraft(false)
             }
           }}
           onKeyDown={handleKeyDown}
@@ -233,51 +291,103 @@ export function QuickAddComposer({ disabled = false, onExpand, onSave }: QuickAd
 
       <small className="hint-text">
         {mode === 'single'
-          ? 'Press Enter to save quickly. Use Shift+Enter for a new line.'
-          : 'Each non-empty line is parsed on its own. Invalid lines are skipped and reported below.'}
+          ? 'Press Enter to save quickly. Use Shift+Enter for a newline. Cmd/Ctrl+Enter also works in the full editor.'
+          : 'Preview first, then save valid rows only. Cmd/Ctrl+Enter previews or confirms the current paste.'}
       </small>
+
+      {restoredDraft && !error && !success && (
+        <p className="hint-text">Restored your unsaved quick-entry draft on this device.</p>
+      )}
 
       {error && <p className="error-text">{error}</p>}
       {success && <p className="hint-text">{success}</p>}
 
-      {invalidLines.length > 0 && (
-        <div className="quick-add-feedback">
-          <strong>Skipped lines</strong>
-          <div className="list-stack">
-            {invalidLines.map((item) => (
-              <div key={`${item.lineNumber}:${item.content}`} className="activity-item">
-                <strong>Line {item.lineNumber}</strong>
-                <small>{item.reason}</small>
-              </div>
-            ))}
+      {preview && (
+        <div className="quick-add-preview">
+          <div className="panel-heading">
+            <strong>Preview</strong>
+            <small>{preview.drafts.length} ready</small>
           </div>
+
+          <div className="list-stack list-stack--scroll">
+            {preview.drafts.map((item, index) => {
+              const summary = summarizeQuickAddDraft(item.draft)
+              return (
+                <div key={`${item.sourceLabel}-${index}`} className="activity-item quick-add-preview__item">
+                  <div className="quick-add-preview__meta">
+                    <strong>{item.sourceLabel}</strong>
+                    <small>{item.draft.type.replace('_', ' ')}</small>
+                  </div>
+                  <strong>{summary.heading}</strong>
+                  <small>{summary.detail || 'No answer yet.'}</small>
+                </div>
+              )
+            })}
+          </div>
+
+          {preview.invalidLines.length > 0 && (
+            <div className="quick-add-feedback">
+              <strong>Needs attention</strong>
+              <div className="list-stack">
+                {preview.invalidLines.map((item) => (
+                  <div key={`${item.label ?? item.lineNumber}:${item.content}`} className="activity-item">
+                    <strong>{item.label ?? `Line ${item.lineNumber}`}</strong>
+                    <small>{item.reason}</small>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       <div className="modal-actions quick-add-actions">
-        <button
-          className="primary-button"
-          disabled={disabled || saving || !value.trim()}
-          type="button"
-          onClick={() => {
-            void (mode === 'single' ? saveSingle() : saveBulk())
-          }}
-        >
-          {saving
-            ? 'Saving...'
-            : mode === 'single'
-              ? 'Add card'
-              : 'Add valid lines'}
-        </button>
-        <button
-          className="ghost-button"
-          disabled={!canExpand || saving}
-          type="button"
-          onClick={handleExpand}
-        >
-          <Expand size={16} />
-          Expand
-        </button>
+        {mode === 'single' ? (
+          <>
+            <button
+              className="primary-button"
+              disabled={disabled || saving || !singleValue.trim()}
+              type="button"
+              onClick={() => {
+                void saveSingle()
+              }}
+            >
+              {saving ? 'Saving...' : 'Add card'}
+            </button>
+            <button
+              className="ghost-button"
+              disabled={!canExpand || saving}
+              type="button"
+              onClick={handleExpand}
+            >
+              <Expand size={16} />
+              Expand
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              className="ghost-button"
+              disabled={disabled || saving || !bulkValue.trim()}
+              type="button"
+              onClick={buildPreview}
+            >
+              {preview ? 'Refresh preview' : 'Preview cards'}
+            </button>
+            <button
+              className="primary-button"
+              disabled={disabled || saving || !(preview?.drafts.length ?? 0)}
+              type="button"
+              onClick={() => {
+                void saveBulk()
+              }}
+            >
+              {saving
+                ? 'Saving...'
+                : `Save ${preview?.drafts.length ?? 0} card${preview?.drafts.length === 1 ? '' : 's'}`}
+            </button>
+          </>
+        )}
       </div>
     </section>
   )

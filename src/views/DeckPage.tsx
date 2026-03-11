@@ -1,7 +1,7 @@
 'use client'
 
 import { ArrowLeft, Plus, Search, Star, Trash2 } from 'lucide-react'
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { Modal } from '../components/Modal'
@@ -9,10 +9,25 @@ import { QuickAddComposer } from '../components/QuickAddComposer'
 import { CardForm, DeckForm, ExportMenu } from '../components/forms'
 import { useAuth } from '../hooks/useAuth'
 import { useCards, useDeck, useFolders, useUserProfile } from '../hooks/useMemoCards'
+import {
+  applyEntryDefaultsToDraft,
+  buildContinueCardDraft,
+  buildCreateCardDraft,
+  loadDeckEntryMemory,
+  saveDeckEntryMemory,
+} from '../lib/cardEntry'
 import { getCardPrompt, getCardSearchText } from '../lib/cardText'
 import { formatSmartDate } from '../lib/utils'
 import { deleteCard, deleteDeck, saveCard, saveDeck, toggleCardFavorite } from '../services/memocards'
 import type { Card, CardDraft } from '../types/models'
+
+function createEmptyEntryMemory() {
+  return {
+    lastSavedDraft: null,
+    lastCardType: null,
+    lastTags: [],
+  }
+}
 
 export function DeckPage() {
   const params = useParams<{ deckId: string }>()
@@ -31,6 +46,11 @@ export function DeckPage() {
   const [showCardModal, setShowCardModal] = useState(false)
   const [editingCard, setEditingCard] = useState<Card | null>(null)
   const [quickAddDraft, setQuickAddDraft] = useState<CardDraft | null>(null)
+  const [entryMemory, setEntryMemory] = useState(() => (deckId ? loadDeckEntryMemory(deckId) : createEmptyEntryMemory()))
+
+  useEffect(() => {
+    setEntryMemory(deckId ? loadDeckEntryMemory(deckId) : createEmptyEntryMemory())
+  }, [deckId])
 
   const tags = useMemo(
     () => Array.from(new Set(cards.flatMap((card) => card.tags))).sort((left, right) => left.localeCompare(right)),
@@ -55,7 +75,7 @@ export function DeckPage() {
     return <div className="empty-panel">Loading deck...</div>
   }
 
-      if (!deck) {
+  if (!deck) {
     return (
       <div className="empty-panel">
         <strong>Deck not found</strong>
@@ -66,13 +86,34 @@ export function DeckPage() {
     )
   }
 
+  const activeUser = user
+  const activeDeck = deck
   const folder = folders.find((item) => item.id === deck.folderId)
   const mastery = deck.counts.totalCards === 0
     ? 0
     : Math.round((deck.counts.masteredCards / deck.counts.totalCards) * 100)
+  const entryDefaults = deck.preferences.entryDefaults
+  const createCardFallback = buildCreateCardDraft(entryDefaults, entryMemory)
+  const quickAddPreferredType = entryMemory.lastCardType ?? entryDefaults.cardType
+
+  function rememberCreatedDraft(draft: CardDraft) {
+    saveDeckEntryMemory(activeDeck.id, draft)
+    setEntryMemory(loadDeckEntryMemory(activeDeck.id))
+  }
+
+  async function saveNewCard(draft: CardDraft) {
+    if (!profile) {
+      throw new Error('Profile not ready yet.')
+    }
+
+    const nextDraft = applyEntryDefaultsToDraft(draft, entryDefaults, entryMemory)
+    await saveCard(activeUser.id, activeDeck.id, nextDraft, profile.settings)
+    rememberCreatedDraft(nextDraft)
+    return nextDraft
+  }
 
   return (
-    <div className="page-stack">
+    <div className="page-stack page-stack--deck">
       <div className="page-breadcrumb">
         <Link className="ghost-button" href="/app">
           <ArrowLeft size={16} />
@@ -99,23 +140,28 @@ export function DeckPage() {
             )}
           </div>
         </div>
-        <div className="hero-panel__actions">
-          <button className="primary-button" type="button" onClick={() => router.push(`/app/decks/${deck.id}/study`)}>
-            Study deck
-          </button>
-          <button className="ghost-button" type="button" onClick={() => setShowDeckModal(true)}>
-            Edit deck
-          </button>
-          <button
-            className="ghost-button danger-button"
-            type="button"
-            onClick={() => {
-              void deleteDeck(user.id, deck.id).then(() => router.push('/app'))
-            }}
-          >
-            Delete
-          </button>
-          <ExportMenu deck={deck} cards={cards} />
+        <div className="deck-detail-hero__actions">
+          <div className="deck-detail-hero__actions-grid">
+            <button className="primary-button" type="button" onClick={() => router.push(`/app/decks/${deck.id}/study`)}>
+              Study deck
+            </button>
+            <button className="ghost-button" type="button" onClick={() => setShowDeckModal(true)}>
+              Edit deck
+            </button>
+            <ExportMenu deck={deck} cards={cards} />
+          </div>
+          <div className="deck-detail-hero__actions-delete">
+            <button
+              className="button-link button-link--danger deck-detail-hero__delete"
+              type="button"
+              onClick={() => {
+                void deleteDeck(user.id, deck.id).then(() => router.push('/app'))
+              }}
+            >
+              <Trash2 size={16} />
+              Delete
+            </button>
+          </div>
         </div>
       </section>
 
@@ -138,7 +184,7 @@ export function DeckPage() {
         </article>
       </section>
 
-      <section className="filters-card">
+      <section className="filters-card filters-card--deck">
         <div className="section-heading">
           <div>
             <p className="eyebrow">Find a card</p>
@@ -192,13 +238,15 @@ export function DeckPage() {
 
       {profile && (
         <QuickAddComposer
+          deckId={deck.id}
+          preferredType={quickAddPreferredType}
           onExpand={(draft) => {
             setEditingCard(null)
-            setQuickAddDraft(draft)
+            setQuickAddDraft(applyEntryDefaultsToDraft(draft, entryDefaults, entryMemory))
             setShowCardModal(true)
           }}
           onSave={async (draft) => {
-            await saveCard(user.id, deck.id, draft, profile.settings)
+            await saveNewCard(draft)
           }}
         />
       )}
@@ -213,7 +261,7 @@ export function DeckPage() {
           )}
 
           {filteredCards.map((card) => (
-            <article key={card.id} className="card-row">
+            <article key={card.id} className="card-row card-row--deck">
               <div className="card-row__copy">
                 <div className="inline-actions">
                   <span className="pill">{card.type.replace('_', ' ')}</span>
@@ -229,26 +277,30 @@ export function DeckPage() {
                   ))}
                 </div>
               </div>
-              <div className="card-row__meta">
-                <small>Due {formatSmartDate(card.reviewState.dueAt)}</small>
-                <small>{card.reviewState.mastery}% learned</small>
-                <small>{card.studyStats.totalReviews} reviews</small>
-                <div className="inline-actions">
-                  <button className="ghost-button" type="button" onClick={() => void toggleCardFavorite(user.id, deck.id, card)}>
-                    {card.isFavorite ? 'Unfavorite' : 'Favorite'}
-                  </button>
-                  <button
-                    className="ghost-button"
-                    type="button"
-                    onClick={() => {
-                      setEditingCard(card)
-                      setQuickAddDraft(null)
-                      setShowCardModal(true)
-                    }}
-                  >
-                    Edit
-                  </button>
-                  <button className="ghost-button danger-button" type="button" onClick={() => void deleteCard(user.id, deck.id, card.id)}>
+              <div className="card-row__meta card-row__meta--deck">
+                <div className="card-row__stats">
+                  <small>Due {formatSmartDate(card.reviewState.dueAt)}</small>
+                  <small>{card.reviewState.mastery}% learned</small>
+                  <small>{card.studyStats.totalReviews} reviews</small>
+                </div>
+                <div className="card-row__actions">
+                  <div className="card-row__actions-main">
+                    <button className="ghost-button" type="button" onClick={() => void toggleCardFavorite(user.id, deck.id, card)}>
+                      {card.isFavorite ? 'Unfavorite' : 'Favorite'}
+                    </button>
+                    <button
+                      className="ghost-button"
+                      type="button"
+                      onClick={() => {
+                        setEditingCard(card)
+                        setQuickAddDraft(null)
+                        setShowCardModal(true)
+                      }}
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <button className="button-link button-link--danger card-row__delete" type="button" onClick={() => void deleteCard(user.id, deck.id, card.id)}>
                     <Trash2 size={16} />
                     Delete
                   </button>
@@ -259,7 +311,7 @@ export function DeckPage() {
         </div>
 
         <aside className="dashboard-side">
-          <article className="side-panel">
+          <article className="side-panel side-panel--compact">
             <div className="panel-heading">
               <strong>Long-answer cards</strong>
             </div>
@@ -269,7 +321,7 @@ export function DeckPage() {
             </p>
           </article>
 
-          <article className="side-panel">
+          <article className="side-panel side-panel--compact">
             <div className="panel-heading">
               <strong>Audio</strong>
             </div>
@@ -278,7 +330,7 @@ export function DeckPage() {
             </p>
           </article>
 
-          <article className="side-panel">
+          <article className="side-panel side-panel--compact">
             <div className="panel-heading">
               <strong>Your settings</strong>
             </div>
@@ -319,6 +371,7 @@ export function DeckPage() {
           width="lg"
         >
           <CardForm
+            fallbackValue={!editingCard ? createCardFallback : undefined}
             initialValue={
               editingCard
                 ? {
@@ -335,17 +388,32 @@ export function DeckPage() {
                   }
                 : quickAddDraft ?? undefined
             }
+            isEditing={Boolean(editingCard)}
+            lastSavedDraft={entryMemory.lastSavedDraft}
+            storageKey={!editingCard ? deck.id : undefined}
             onCancel={() => {
               setShowCardModal(false)
               setEditingCard(null)
               setQuickAddDraft(null)
             }}
             onSubmit={async (draft) => {
-              await saveCard(user.id, deck.id, draft, profile.settings, editingCard ?? undefined)
+              if (editingCard) {
+                await saveCard(user.id, deck.id, draft, profile.settings, editingCard)
+              } else {
+                await saveNewCard(draft)
+              }
               setShowCardModal(false)
               setEditingCard(null)
               setQuickAddDraft(null)
             }}
+            onSubmitAndContinue={
+              editingCard
+                ? undefined
+                : async (draft) => {
+                    const savedDraft = await saveNewCard(draft)
+                    return buildContinueCardDraft(savedDraft, entryDefaults)
+                  }
+            }
           />
         </Modal>
       )}

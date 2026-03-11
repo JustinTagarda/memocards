@@ -57,6 +57,23 @@ export function createEmptyDeckDraft(): DeckDraft {
       shuffleByDefault: false,
       autoPlayAudio: false,
       dailyGoal: 25,
+      entryDefaults: {
+        cardType: 'basic',
+        tags: [],
+      },
+    },
+  }
+}
+
+function normalizeDeckPreferences(preferences?: Partial<DeckDraft['preferences']>): DeckDraft['preferences'] {
+  const base = createEmptyDeckDraft().preferences
+  return {
+    ...base,
+    ...preferences,
+    entryDefaults: {
+      ...base.entryDefaults,
+      ...preferences?.entryDefaults,
+      tags: preferences?.entryDefaults?.tags ?? base.entryDefaults.tags,
     },
   }
 }
@@ -111,7 +128,7 @@ export function bundleToDeckDraft(bundle: DeckExportBundle): DeckDraft {
     description: bundle.deck.description,
     folderId: null,
     tags: bundle.deck.tags,
-    preferences: bundle.deck.preferences,
+    preferences: normalizeDeckPreferences(bundle.deck.preferences),
   }
 }
 

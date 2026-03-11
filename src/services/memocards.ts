@@ -122,12 +122,26 @@ function normalizeCounts(counts?: Partial<DeckCounts>): DeckCounts {
 
 function normalizeDeck(row: DeckRow): Deck {
   const counts = jsonAs<DeckCounts>(row.counts, normalizeCounts())
-  const preferences = jsonAs<Deck['preferences']>(row.preferences, {
+  const rawPreferences = jsonAs<Deck['preferences']>(row.preferences, {
     defaultMode: 'review',
     shuffleByDefault: false,
     autoPlayAudio: false,
     dailyGoal: DEFAULT_SETTINGS.dailyGoal,
+    entryDefaults: {
+      cardType: 'basic',
+      tags: [],
+    },
   })
+  const preferences: Deck['preferences'] = {
+    defaultMode: rawPreferences.defaultMode,
+    shuffleByDefault: rawPreferences.shuffleByDefault,
+    autoPlayAudio: rawPreferences.autoPlayAudio,
+    dailyGoal: rawPreferences.dailyGoal,
+    entryDefaults: {
+      cardType: rawPreferences.entryDefaults?.cardType ?? 'basic',
+      tags: rawPreferences.entryDefaults?.tags ?? [],
+    },
+  }
   const exportConfig = jsonAs<Deck['exportConfig']>(row.export_config, {
     enabled: true,
     formatVersion: 1,

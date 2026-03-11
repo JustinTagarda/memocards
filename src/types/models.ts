@@ -22,11 +22,17 @@ export interface DeckCounts {
   favorites: number
 }
 
+export interface DeckEntryDefaults {
+  cardType: CardType
+  tags: string[]
+}
+
 export interface DeckStudyPreferences {
   defaultMode: StudyMode
   shuffleByDefault: boolean
   autoPlayAudio: boolean
   dailyGoal: number
+  entryDefaults: DeckEntryDefaults
 }
 
 export interface DeckExportConfig {

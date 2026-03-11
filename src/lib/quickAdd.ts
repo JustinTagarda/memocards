@@ -1,12 +1,24 @@
 import { createEmptyCardDraft } from './importExport'
-import type { CardChoice, CardDraft, CardType } from '../types/models'
+import type { QuickAddEntryType } from './cardEntry'
+import type { CardChoice, CardDraft } from '../types/models'
 
-export type QuickAddCardType = Extract<CardType, 'basic' | 'term' | 'multiple_choice' | 'explanation'>
+export type QuickAddCardType = QuickAddEntryType
 
 export interface QuickAddInvalidLine {
   content: string
   lineNumber: number
   reason: string
+  label?: string
+}
+
+export interface QuickAddPreviewItem {
+  draft: CardDraft
+  sourceLabel: string
+}
+
+export interface QuickAddPreviewResult {
+  drafts: QuickAddPreviewItem[]
+  invalidLines: QuickAddInvalidLine[]
 }
 
 export interface QuickAddTypeMeta {
@@ -17,33 +29,39 @@ export interface QuickAddTypeMeta {
   placeholder: string
 }
 
+interface TextBlock {
+  index: number
+  startLine: number
+  text: string
+}
+
 export const QUICK_ADD_TYPE_META: Record<QuickAddCardType, QuickAddTypeMeta> = {
   basic: {
     description: 'Prompt :: answer',
     example: 'What is the capital of France? :: Paris',
-    help: 'Use double colons to split the front and back.',
-    inputLabel: 'Quick line',
+    help: 'Use double colons, tab-separated pairs, or blank-line front/back blocks.',
+    inputLabel: 'Quick entry',
     placeholder: 'What is the capital of France? :: Paris',
   },
   term: {
     description: 'Term -> definition',
     example: 'Polymorphism -> The ability of objects to take many forms',
-    help: 'Use an arrow to split the term from its definition.',
-    inputLabel: 'Quick line',
+    help: 'Use an arrow, tab-separated pairs, or blank-line term/definition blocks.',
+    inputLabel: 'Quick entry',
     placeholder: 'Polymorphism -> The ability of objects to take many forms',
   },
   multiple_choice: {
     description: 'Question | option 1 | option 2* | option 3',
     example: 'Capital of France? | Rome | Paris* | Madrid | Berlin',
-    help: 'Mark exactly one correct choice with a trailing *.',
-    inputLabel: 'Quick line',
+    help: 'Keep one question per line and mark exactly one correct choice with a trailing *.',
+    inputLabel: 'Quick entry',
     placeholder: 'Capital of France? | Rome | Paris* | Madrid | Berlin',
   },
   explanation: {
     description: 'Prompt ::: expected answer',
     example: 'Why does caching improve performance? ::: It reduces repeated expensive work',
-    help: 'Use triple colons for explanation cards so it does not clash with basic cards.',
-    inputLabel: 'Quick line',
+    help: 'Use triple colons, tab-separated pairs, or blank-line prompt/answer blocks.',
+    inputLabel: 'Quick entry',
     placeholder: 'Why does caching improve performance? ::: It reduces repeated expensive work',
   },
 }
@@ -72,6 +90,48 @@ function buildBaseDraft(type: QuickAddCardType) {
   }
 }
 
+function buildPairedDraft(type: Exclude<QuickAddCardType, 'multiple_choice'>, left: string, right: string) {
+  const front = left.trim()
+  const back = right.trim()
+
+  if (!front || !back) {
+    throw new Error('Both sides of the card are required.')
+  }
+
+  switch (type) {
+    case 'basic':
+      return {
+        ...buildBaseDraft('basic'),
+        front,
+        back,
+        prompt: front,
+        answer: back,
+      }
+    case 'term':
+      return {
+        ...buildBaseDraft('term'),
+        front,
+        back,
+        prompt: front,
+        answer: back,
+      }
+    case 'explanation':
+      return {
+        ...buildBaseDraft('explanation'),
+        front,
+        back,
+        prompt: front,
+        answer: back,
+        expectedAnswer: {
+          canonical: back,
+          acceptedVariants: [],
+          keywords: [],
+          rubric: '',
+        },
+      }
+  }
+}
+
 function parseBasicLine(line: string): CardDraft {
   if (line.includes(':::')) {
     throw new Error('Use ::: for explanation cards.')
@@ -82,18 +142,7 @@ function parseBasicLine(line: string): CardDraft {
     throw new Error('Use prompt :: answer.')
   }
 
-  const [front, back] = parts.map((part) => part.trim())
-  if (!front || !back) {
-    throw new Error('Both prompt and answer are required.')
-  }
-
-  return {
-    ...buildBaseDraft('basic'),
-    front,
-    back,
-    prompt: front,
-    answer: back,
-  }
+  return buildPairedDraft('basic', parts[0], parts[1])
 }
 
 function parseTermLine(line: string): CardDraft {
@@ -102,18 +151,7 @@ function parseTermLine(line: string): CardDraft {
     throw new Error('Use term -> definition.')
   }
 
-  const [front, back] = parts.map((part) => part.trim())
-  if (!front || !back) {
-    throw new Error('Both term and definition are required.')
-  }
-
-  return {
-    ...buildBaseDraft('term'),
-    front,
-    back,
-    prompt: front,
-    answer: back,
-  }
+  return buildPairedDraft('term', parts[0], parts[1])
 }
 
 function parseMultipleChoiceLine(line: string): CardDraft {
@@ -169,47 +207,188 @@ function parseExplanationLine(line: string): CardDraft {
     throw new Error('Use prompt ::: expected answer.')
   }
 
-  const [prompt, canonical] = parts.map((part) => part.trim())
-  if (!prompt || !canonical) {
-    throw new Error('Both prompt and expected answer are required.')
-  }
-
-  return {
-    ...buildBaseDraft('explanation'),
-    front: prompt,
-    back: canonical,
-    prompt,
-    answer: canonical,
-    expectedAnswer: {
-      canonical,
-      acceptedVariants: [],
-      keywords: [],
-      rubric: '',
-    },
-  }
+  return buildPairedDraft('explanation', parts[0], parts[1])
 }
 
-export function parseQuickAddLine(line: string, type: QuickAddCardType): CardDraft {
-  const normalized = line.trim()
-  if (!normalized) {
-    throw new Error('Enter a line to add.')
+function parseTabSeparatedPair(line: string, type: Exclude<QuickAddCardType, 'multiple_choice'>) {
+  const segments = line.split('\t').map((segment) => segment.trim()).filter(Boolean)
+  if (segments.length < 2) {
+    throw new Error('Use a tab between the front and back.')
   }
 
+  return buildPairedDraft(type, segments[0] ?? '', segments.slice(1).join(' '))
+}
+
+function canParseInlineLine(line: string, type: QuickAddCardType) {
   switch (type) {
     case 'basic':
-      return parseBasicLine(normalized)
+      return line.includes('::') || line.includes('\t')
     case 'term':
-      return parseTermLine(normalized)
+      return line.includes('->') || line.includes('\t')
     case 'multiple_choice':
-      return parseMultipleChoiceLine(normalized)
+      return line.includes('|')
     case 'explanation':
-      return parseExplanationLine(normalized)
+      return line.includes(':::') || line.includes('\t')
   }
 }
 
-export function parseQuickAddInput(input: string, type: QuickAddCardType) {
-  const drafts: CardDraft[] = []
+function collectBlocks(input: string) {
+  const blocks: TextBlock[] = []
+  const lines = input.split(/\r?\n/)
+  let buffer: string[] = []
+  let startLine = 1
+
+  lines.forEach((line, index) => {
+    if (!line.trim()) {
+      if (buffer.length > 0) {
+        blocks.push({
+          index: blocks.length + 1,
+          startLine,
+          text: buffer.join('\n').trim(),
+        })
+        buffer = []
+      }
+      startLine = index + 2
+      return
+    }
+
+    if (buffer.length === 0) {
+      startLine = index + 1
+    }
+
+    buffer.push(line)
+  })
+
+  if (buffer.length > 0) {
+    blocks.push({
+      index: blocks.length + 1,
+      startLine,
+      text: buffer.join('\n').trim(),
+    })
+  }
+
+  return blocks
+}
+
+function parseBlockPairs(input: string, type: Exclude<QuickAddCardType, 'multiple_choice'>): QuickAddPreviewResult {
+  const blocks = collectBlocks(input)
+  const drafts: QuickAddPreviewItem[] = []
   const invalidLines: QuickAddInvalidLine[] = []
+
+  for (let index = 0; index < blocks.length; index += 2) {
+    const frontBlock = blocks[index]
+    const backBlock = blocks[index + 1]
+
+    if (!frontBlock) {
+      continue
+    }
+
+    if (!backBlock) {
+      invalidLines.push({
+        content: frontBlock.text,
+        lineNumber: frontBlock.startLine,
+        label: `Block ${frontBlock.index}`,
+        reason: 'This block is missing a matching answer block.',
+      })
+      continue
+    }
+
+    try {
+      drafts.push({
+        draft: buildPairedDraft(type, frontBlock.text, backBlock.text),
+        sourceLabel: `Blocks ${frontBlock.index}-${backBlock.index}`,
+      })
+    } catch (reason) {
+      invalidLines.push({
+        content: `${frontBlock.text}\n\n${backBlock.text}`,
+        lineNumber: frontBlock.startLine,
+        label: `Blocks ${frontBlock.index}-${backBlock.index}`,
+        reason: reason instanceof Error ? reason.message : 'Unable to parse these blocks.',
+      })
+    }
+  }
+
+  return { drafts, invalidLines }
+}
+
+function parseInlineLine(line: string, type: QuickAddCardType) {
+  switch (type) {
+    case 'basic':
+      if (line.includes('\t') && !line.includes('::')) {
+        return parseTabSeparatedPair(line, 'basic')
+      }
+      return parseBasicLine(line)
+    case 'term':
+      if (line.includes('\t') && !line.includes('->')) {
+        return parseTabSeparatedPair(line, 'term')
+      }
+      return parseTermLine(line)
+    case 'multiple_choice':
+      return parseMultipleChoiceLine(line)
+    case 'explanation':
+      if (line.includes('\t') && !line.includes(':::')) {
+        return parseTabSeparatedPair(line, 'explanation')
+      }
+      return parseExplanationLine(line)
+  }
+}
+
+function parseSingleBlockDraft(input: string, type: Exclude<QuickAddCardType, 'multiple_choice'>) {
+  const blocks = collectBlocks(input)
+  if (blocks.length !== 2) {
+    throw new Error('Use one prompt block, a blank line, then one answer block.')
+  }
+
+  return buildPairedDraft(type, blocks[0]?.text ?? '', blocks[1]?.text ?? '')
+}
+
+export function summarizeQuickAddDraft(draft: CardDraft) {
+  switch (draft.type) {
+    case 'basic':
+    case 'term':
+      return {
+        heading: draft.front,
+        detail: draft.back,
+      }
+    case 'multiple_choice':
+      return {
+        heading: draft.prompt,
+        detail: draft.choices.map((choice) => `${choice.text}${choice.isCorrect ? ' *' : ''}`).join(' | '),
+      }
+    case 'explanation':
+      return {
+        heading: draft.prompt,
+        detail: draft.expectedAnswer.canonical,
+      }
+  }
+}
+
+export function parseQuickAddLine(input: string, type: QuickAddCardType): CardDraft {
+  const normalized = input.trim()
+  if (!normalized) {
+    throw new Error('Enter content to add.')
+  }
+
+  if (type !== 'multiple_choice' && /\r?\n\s*\r?\n/.test(normalized) && !canParseInlineLine(normalized, type)) {
+    return parseSingleBlockDraft(normalized, type)
+  }
+
+  return parseInlineLine(normalized, type)
+}
+
+export function parseQuickAddInput(input: string, type: QuickAddCardType): QuickAddPreviewResult {
+  const drafts: QuickAddPreviewItem[] = []
+  const invalidLines: QuickAddInvalidLine[] = []
+  const nonEmptyLines = input.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const shouldUseBlockPairs =
+    type !== 'multiple_choice' &&
+    /\r?\n\s*\r?\n/.test(input) &&
+    nonEmptyLines.length > 0 &&
+    !nonEmptyLines.every((line) => canParseInlineLine(line, type))
+
+  if (shouldUseBlockPairs) {
+    return parseBlockPairs(input, type)
+  }
 
   input.split(/\r?\n/).forEach((rawLine, index) => {
     const line = rawLine.trim()
@@ -218,7 +397,10 @@ export function parseQuickAddInput(input: string, type: QuickAddCardType) {
     }
 
     try {
-      drafts.push(parseQuickAddLine(line, type))
+      drafts.push({
+        draft: parseInlineLine(line, type),
+        sourceLabel: `Line ${index + 1}`,
+      })
     } catch (reason) {
       invalidLines.push({
         content: rawLine,

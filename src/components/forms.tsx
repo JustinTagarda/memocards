@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react'
 import { buildDeckCsv, buildDeckExportBundle, createEmptyCardDraft, createEmptyDeckDraft, parseImportFile } from '../lib/importExport'
+import { clearCardDraft, cloneCardDraft, loadCardDraft, saveCardDraft } from '../lib/cardEntry'
 import { parseTags, triggerDownload } from '../lib/utils'
 import type { Card, CardChoice, CardDraft, Deck, DeckDraft, Folder } from '../types/models'
 
@@ -19,8 +20,13 @@ interface FolderFormProps {
 
 interface CardFormProps {
   initialValue?: CardDraft
+  fallbackValue?: CardDraft
+  isEditing?: boolean
+  lastSavedDraft?: CardDraft | null
+  storageKey?: string
   onCancel: () => void
   onSubmit: (draft: CardDraft) => Promise<void>
+  onSubmitAndContinue?: (draft: CardDraft) => Promise<CardDraft>
 }
 
 interface ImportDialogProps {
@@ -222,6 +228,59 @@ export function DeckForm({ initialValue, folders, onCancel, onSubmit }: DeckForm
         </div>
       </section>
 
+      <section className="form-section">
+        <div className="form-section__heading">
+          <strong>New card defaults</strong>
+          <p>Use these as the starting point for Quick Add and the full card editor in this deck.</p>
+        </div>
+
+        <div className="field-grid">
+          <label className="field">
+            <span>Default card type</span>
+            <select
+              value={draft.preferences.entryDefaults.cardType}
+              onChange={(event) => {
+                setDraft((current) => ({
+                  ...current,
+                  preferences: {
+                    ...current.preferences,
+                    entryDefaults: {
+                      ...current.preferences.entryDefaults,
+                      cardType: event.target.value as DeckDraft['preferences']['entryDefaults']['cardType'],
+                    },
+                  },
+                }))
+              }}
+            >
+              <option value="basic">Question &amp; answer</option>
+              <option value="term">Term &amp; definition</option>
+              <option value="multiple_choice">Multiple choice</option>
+              <option value="explanation">Long answer</option>
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Default card tags</span>
+            <input
+              placeholder="lecture 2, important"
+              value={draft.preferences.entryDefaults.tags.join(', ')}
+              onChange={(event) => {
+                setDraft((current) => ({
+                  ...current,
+                  preferences: {
+                    ...current.preferences,
+                    entryDefaults: {
+                      ...current.preferences.entryDefaults,
+                      tags: parseTags(event.target.value),
+                    },
+                  },
+                }))
+              }}
+            />
+          </label>
+        </div>
+      </section>
+
       <div className="modal-actions modal-actions--deck modal-actions--deck-form">
         <button className="primary-button" disabled={saving || !draft.title.trim()} type="submit">
           {saving ? 'Saving...' : 'Save deck'}
@@ -281,9 +340,66 @@ export function FolderForm({ onCancel, onSubmit }: FolderFormProps) {
   )
 }
 
-export function CardForm({ initialValue, onCancel, onSubmit }: CardFormProps) {
-  const [draft, setDraft] = useState<CardDraft>(initialValue ?? createEmptyCardDraft())
+function hasMeaningfulCardDraft(draft: CardDraft) {
+  const textValues = [
+    draft.front,
+    draft.back,
+    draft.prompt,
+    draft.answer,
+    draft.explanation,
+    draft.expectedAnswer.canonical,
+    draft.expectedAnswer.rubric,
+  ]
+
+  return (
+    textValues.some((value) => value.trim().length > 0) ||
+    draft.expectedAnswer.keywords.length > 0 ||
+    draft.expectedAnswer.acceptedVariants.length > 0 ||
+    draft.tags.length > 0 ||
+    draft.isFavorite ||
+    draft.choices.some((choice) => choice.text.trim().length > 0)
+  )
+}
+
+function resolveCardFormDraft(initialValue?: CardDraft, storageKey?: string, fallbackValue?: CardDraft) {
+  if (initialValue) {
+    return cloneCardDraft(initialValue)
+  }
+
+  if (storageKey) {
+    const storedDraft = loadCardDraft(storageKey)
+    if (storedDraft) {
+      return storedDraft
+    }
+  }
+
+  if (fallbackValue) {
+    return cloneCardDraft(fallbackValue)
+  }
+
+  return createEmptyCardDraft()
+}
+
+export function CardForm({
+  initialValue,
+  fallbackValue,
+  isEditing = false,
+  lastSavedDraft = null,
+  storageKey,
+  onCancel,
+  onSubmit,
+  onSubmitAndContinue,
+}: CardFormProps) {
+  const [draft, setDraft] = useState<CardDraft>(() => resolveCardFormDraft(initialValue, storageKey, fallbackValue))
   const [saving, setSaving] = useState(false)
+  const [restoredDraft, setRestoredDraft] = useState(() => !initialValue && Boolean(storageKey && loadCardDraft(storageKey)))
+  const primaryFieldRef = useRef<HTMLTextAreaElement | null>(null)
+  const formRef = useRef<HTMLFormElement | null>(null)
+
+  useEffect(() => {
+    setDraft(resolveCardFormDraft(initialValue, storageKey, fallbackValue))
+    setRestoredDraft(!initialValue && Boolean(storageKey && loadCardDraft(storageKey)))
+  }, [fallbackValue, initialValue, storageKey])
 
   useEffect(() => {
     if (draft.type === 'multiple_choice') {
@@ -293,6 +409,23 @@ export function CardForm({ initialValue, onCancel, onSubmit }: CardFormProps) {
       }))
     }
   }, [draft.type])
+
+  useEffect(() => {
+    if (!storageKey || isEditing) {
+      return
+    }
+
+    if (!hasMeaningfulCardDraft(draft)) {
+      clearCardDraft(storageKey)
+      return
+    }
+
+    saveCardDraft(storageKey, draft)
+  }, [draft, isEditing, storageKey])
+
+  useEffect(() => {
+    primaryFieldRef.current?.focus()
+  }, [])
 
   const typeLabels = useMemo(
     () =>
@@ -305,48 +438,75 @@ export function CardForm({ initialValue, onCancel, onSubmit }: CardFormProps) {
     [],
   )
 
+  function buildSubmittedDraft() {
+    const normalizedChoices =
+      draft.type === 'multiple_choice'
+        ? draft.choices.filter((choice) => choice.text.trim())
+        : []
+    const correctChoiceText =
+      draft.type === 'multiple_choice'
+        ? normalizedChoices.find((choice) => choice.isCorrect)?.text.trim() ?? ''
+        : draft.answer
+
+    return {
+      ...draft,
+      front:
+        draft.type === 'basic' || draft.type === 'term'
+          ? draft.front
+          : draft.prompt,
+      back:
+        draft.type === 'basic' || draft.type === 'term'
+          ? draft.back
+          : draft.type === 'multiple_choice'
+            ? correctChoiceText
+            : draft.expectedAnswer.canonical,
+      prompt: draft.type === 'basic' || draft.type === 'term' ? draft.front : draft.prompt,
+      answer:
+        draft.type === 'basic' || draft.type === 'term'
+          ? draft.back
+          : draft.type === 'multiple_choice'
+            ? correctChoiceText
+            : draft.expectedAnswer.canonical,
+      choices: normalizedChoices,
+      tags: draft.tags,
+      expectedAnswer: {
+        ...draft.expectedAnswer,
+        canonical:
+          draft.type === 'explanation' ? draft.expectedAnswer.canonical : correctChoiceText || draft.answer,
+      },
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSaving(true)
     try {
-      const normalizedChoices =
-        draft.type === 'multiple_choice'
-          ? draft.choices.filter((choice) => choice.text.trim())
-          : []
-      const correctChoiceText =
-        draft.type === 'multiple_choice'
-          ? normalizedChoices.find((choice) => choice.isCorrect)?.text.trim() ?? ''
-          : draft.answer
+      const nextDraft = buildSubmittedDraft()
+      await onSubmit(nextDraft)
+      if (storageKey) {
+        clearCardDraft(storageKey)
+      }
+      setRestoredDraft(false)
+    } finally {
+      setSaving(false)
+    }
+  }
 
-      await onSubmit({
-        ...draft,
-        front:
-          draft.type === 'basic' || draft.type === 'term'
-            ? draft.front
-            : draft.type === 'multiple_choice'
-              ? draft.prompt
-              : draft.prompt,
-        back:
-          draft.type === 'basic' || draft.type === 'term'
-            ? draft.back
-            : draft.type === 'multiple_choice'
-              ? correctChoiceText
-              : draft.expectedAnswer.canonical,
-        prompt: draft.type === 'basic' || draft.type === 'term' ? draft.front : draft.prompt,
-        answer:
-          draft.type === 'basic' || draft.type === 'term'
-            ? draft.back
-            : draft.type === 'multiple_choice'
-              ? correctChoiceText
-              : draft.expectedAnswer.canonical,
-        choices: normalizedChoices,
-        tags: draft.tags,
-        expectedAnswer: {
-          ...draft.expectedAnswer,
-          canonical:
-            draft.type === 'explanation' ? draft.expectedAnswer.canonical : correctChoiceText || draft.answer,
-        },
-      })
+  async function handleSubmitAndContinue() {
+    if (!onSubmitAndContinue) {
+      return
+    }
+
+    setSaving(true)
+    try {
+      const nextDraft = buildSubmittedDraft()
+      const continuedDraft = await onSubmitAndContinue(nextDraft)
+      if (storageKey) {
+        clearCardDraft(storageKey)
+      }
+      setDraft(cloneCardDraft(continuedDraft))
+      setRestoredDraft(false)
+      primaryFieldRef.current?.focus()
     } finally {
       setSaving(false)
     }
@@ -372,10 +532,38 @@ export function CardForm({ initialValue, onCancel, onSubmit }: CardFormProps) {
     }))
   }
 
+  function handleKeyDown(event: KeyboardEvent<HTMLFormElement>) {
+    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+      event.preventDefault()
+      formRef.current?.requestSubmit()
+    }
+  }
+
   const labelPair = typeLabels[draft.type]
 
   return (
-    <form className="stack-form" onSubmit={handleSubmit}>
+    <form ref={formRef} className="stack-form" onSubmit={handleSubmit} onKeyDown={handleKeyDown}>
+      {!isEditing && (
+        <div className="form-callout">
+          <small className="hint-text">
+            {restoredDraft ? 'Restored your unsaved draft on this device.' : 'Cmd/Ctrl+Enter saves from anywhere in this form.'}
+          </small>
+          {lastSavedDraft && (
+            <button
+              className="ghost-button ghost-button--inline"
+              type="button"
+              onClick={() => {
+                setDraft(cloneCardDraft(lastSavedDraft))
+                setRestoredDraft(false)
+                primaryFieldRef.current?.focus()
+              }}
+            >
+              Duplicate last saved
+            </button>
+          )}
+        </div>
+      )}
+
       <label className="field">
         <span>Card type</span>
         <select
@@ -399,6 +587,7 @@ export function CardForm({ initialValue, onCancel, onSubmit }: CardFormProps) {
           <label className="field">
             <span>{labelPair.first}</span>
             <textarea
+              ref={primaryFieldRef}
               required
               rows={4}
               value={draft.front}
@@ -426,6 +615,7 @@ export function CardForm({ initialValue, onCancel, onSubmit }: CardFormProps) {
           <label className="field">
             <span>{labelPair.first}</span>
             <textarea
+              ref={primaryFieldRef}
               required
               rows={3}
               value={draft.prompt}
@@ -478,6 +668,7 @@ export function CardForm({ initialValue, onCancel, onSubmit }: CardFormProps) {
           <label className="field">
             <span>{labelPair.first}</span>
             <textarea
+              ref={primaryFieldRef}
               required
               rows={4}
               value={draft.prompt}
@@ -568,6 +759,18 @@ export function CardForm({ initialValue, onCancel, onSubmit }: CardFormProps) {
         <button className="ghost-button" type="button" onClick={onCancel}>
           Cancel
         </button>
+        {!isEditing && onSubmitAndContinue && (
+          <button
+            className="ghost-button"
+            disabled={saving}
+            type="button"
+            onClick={() => {
+              void handleSubmitAndContinue()
+            }}
+          >
+            {saving ? 'Saving...' : 'Save & add another'}
+          </button>
+        )}
         <button className="primary-button" disabled={saving} type="submit">
           {saving ? 'Saving...' : 'Save card'}
         </button>
@@ -641,7 +844,7 @@ export function ImportDialog({ onCancel, onSubmit }: ImportDialogProps) {
 
 export function ExportMenu({ deck, cards }: ExportMenuProps) {
   return (
-    <div className="inline-actions">
+    <div className="deck-export-actions">
       <button
         className="ghost-button"
         type="button"
