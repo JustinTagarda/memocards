@@ -55,7 +55,6 @@ export function LandingPage() {
             <small>Private study space</small>
           </span>
         </Link>
-        <span className="status-pill">Made for quick daily review</span>
       </header>
 
       <section className="landing-hero">
@@ -90,10 +89,10 @@ export function LandingPage() {
             </a>
           </div>
 
-          <div className="landing-proof">
-            <span className="status-pill status-pill--warm">Smart review</span>
-            <span className="status-pill">Audio when you want it</span>
-            <span className="status-pill">Private study space</span>
+          <div className="landing-notes">
+            <span>Smart review</span>
+            <span>Audio when you want it</span>
+            <span>Private study space</span>
           </div>
         </div>
 

@@ -396,7 +396,6 @@ small,
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: 0.9rem;
 }
 
@@ -444,11 +443,12 @@ small,
 .landing-copy {
   align-content: start;
   gap: 1rem;
-  max-width: 41rem;
+  max-width: 39rem;
 }
 
 .landing-copy h1 {
-  max-width: 9ch;
+  max-width: 11ch;
+  font-size: clamp(2.85rem, 8vw, 4.95rem);
 }
 
 .landing-summary,
@@ -466,10 +466,30 @@ small,
   font-size: 1.05rem;
 }
 
-.landing-proof {
+.landing-notes {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.65rem;
+  gap: 0.65rem 1rem;
+  color: var(--ink-muted);
+  font-size: 0.92rem;
+}
+
+.landing-notes span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.landing-notes span::before {
+  content: '';
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 999px;
+  background: rgba(242, 106, 46, 0.45);
+}
+
+.landing-notes span:first-child::before {
+  background: var(--accent);
 }
 
 .landing-visual {
@@ -510,7 +530,7 @@ small,
 }
 
 .study-preview {
-  padding: 1.2rem;
+  padding: 1.05rem;
   border-radius: calc(var(--radius-xl) + 0.2rem);
   border: 1px solid rgba(31, 39, 64, 0.11);
   box-shadow: var(--shadow-lg);
@@ -533,7 +553,7 @@ small,
 
 .study-preview__body strong {
   font-family: 'Fraunces', serif;
-  font-size: clamp(1.45rem, 5vw, 2rem);
+  font-size: clamp(1.35rem, 4.5vw, 1.85rem);
   line-height: 1.02;
   color: var(--ink-strong);
 }
@@ -1088,7 +1108,7 @@ textarea:focus {
 
   .landing-hero {
     gap: 1.5rem;
-    grid-template-columns: minmax(0, 1.05fr) minmax(20rem, 0.95fr);
+    grid-template-columns: minmax(0, 1fr) minmax(21rem, 1fr);
   }
 
   .deck-detail-hero,
@@ -1126,8 +1146,25 @@ textarea:focus {
   }
 
   .landing-hero {
-    grid-template-columns: minmax(0, 1.06fr) minmax(23rem, 0.94fr);
+    grid-template-columns: minmax(0, 0.98fr) minmax(24rem, 1.02fr);
     gap: 2rem;
+  }
+
+  .landing-copy h1 {
+    font-size: clamp(3rem, 5.4vw, 4.45rem);
+  }
+
+  .feature-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .feature-card {
+    grid-column: span 2;
+  }
+
+  .feature-card:nth-last-child(2),
+  .feature-card:last-child {
+    grid-column: span 3;
   }
 
   .hero-panel {
