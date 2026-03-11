@@ -1,7 +1,7 @@
 'use client'
 
 import { ArrowLeft, Plus, Search, Star, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { Modal } from '../components/Modal'
@@ -53,18 +53,21 @@ export function DeckPage() {
     return <div className="empty-panel">Loading deck...</div>
   }
 
-  if (!deck) {
+      if (!deck) {
     return (
       <div className="empty-panel">
         <strong>Deck not found</strong>
         <Link className="ghost-button" href="/app">
-          Back to dashboard
+          Back home
         </Link>
       </div>
     )
   }
 
   const folder = folders.find((item) => item.id === deck.folderId)
+  const mastery = deck.counts.totalCards === 0
+    ? 0
+    : Math.round((deck.counts.masteredCards / deck.counts.totalCards) * 100)
 
   return (
     <div className="page-stack">
@@ -75,17 +78,23 @@ export function DeckPage() {
         </Link>
       </div>
 
-      <section className="deck-detail-hero">
-        <div>
-          <p className="eyebrow">{folder?.name ?? 'Private deck'}</p>
+      <section className="deck-detail-hero deck-detail-hero--focus">
+        <div className="deck-detail-hero__content">
+          <span className="folder-chip" style={{ '--folder-color': folder?.color ?? '#f26a2e' } as CSSProperties}>
+            {folder?.name ?? 'Private deck'}
+          </span>
           <h1>{deck.title}</h1>
-          <p>{deck.description || 'Use this deck page to edit cards, manage tags, and export safely.'}</p>
+          <p>{deck.description || 'Add cards, keep things tidy, and jump into study whenever you are ready.'}</p>
           <div className="tag-row">
-            {deck.tags.map((tag) => (
-              <span key={tag} className="tag-pill">
-                {tag}
-              </span>
-            ))}
+            {deck.tags.length > 0 ? (
+              deck.tags.map((tag) => (
+                <span key={tag} className="tag-pill">
+                  {tag}
+                </span>
+              ))
+            ) : (
+              <span className="muted-label">No tags yet</span>
+            )}
           </div>
         </div>
         <div className="hero-panel__actions">
@@ -108,7 +117,7 @@ export function DeckPage() {
         </div>
       </section>
 
-      <section className="summary-grid">
+      <section className="summary-grid summary-grid--deck">
         <article className="summary-card">
           <strong>{deck.counts.totalCards}</strong>
           <span>cards</span>
@@ -119,49 +128,63 @@ export function DeckPage() {
         </article>
         <article className="summary-card">
           <strong>{deck.counts.masteredCards}</strong>
-          <span>mastered</span>
+          <span>learned well</span>
         </article>
         <article className="summary-card">
-          <strong>{deck.preferences.dailyGoal}</strong>
-          <span>daily goal</span>
+          <strong>{mastery}%</strong>
+          <span>learned</span>
         </article>
       </section>
 
-      <section className="dashboard-controls">
-        <label className="search-box">
-          <Search size={16} />
-          <input
-            placeholder="Search cards, keywords, prompts"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
+      <section className="filters-card">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Find a card</p>
+            <h2>Search this deck</h2>
+          </div>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => {
+              setEditingCard(null)
+              setShowCardModal(true)
+            }}
+          >
+            <Plus size={16} />
+            Add card
+          </button>
+        </div>
 
-        <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
-          <option value="all">All tags</option>
-          {tags.map((tag) => (
-            <option key={tag} value={tag}>
-              {tag}
-            </option>
-          ))}
-        </select>
+        <div className="filters-grid">
+          <label className="field filter-field">
+            <span>Search</span>
+            <div className="search-box">
+              <Search size={16} />
+              <input
+                placeholder="Search cards, keywords, prompts"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
+          </label>
 
-        <label className="checkbox-inline">
-          <input checked={favoritesOnly} type="checkbox" onChange={(event) => setFavoritesOnly(event.target.checked)} />
-          Favorites only
-        </label>
+          <label className="field filter-field">
+            <span>Tag</span>
+            <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
+              <option value="all">All tags</option>
+              {tags.map((tag) => (
+                <option key={tag} value={tag}>
+                  {tag}
+                </option>
+              ))}
+            </select>
+          </label>
 
-        <button
-          className="primary-button"
-          type="button"
-          onClick={() => {
-            setEditingCard(null)
-            setShowCardModal(true)
-          }}
-        >
-          <Plus size={16} />
-          Add card
-        </button>
+          <label className="filter-toggle">
+            <input checked={favoritesOnly} type="checkbox" onChange={(event) => setFavoritesOnly(event.target.checked)} />
+            Favorites only
+          </label>
+        </div>
       </section>
 
       <section className="deck-workspace">
@@ -169,7 +192,7 @@ export function DeckPage() {
           {filteredCards.length === 0 && (
             <article className="empty-panel">
               <strong>No cards match this filter</strong>
-              <p>Add a new card or clear the filters.</p>
+              <p>Try another search, clear a filter, or add a new card.</p>
             </article>
           )}
 
@@ -192,7 +215,7 @@ export function DeckPage() {
               </div>
               <div className="card-row__meta">
                 <small>Due {formatSmartDate(card.reviewState.dueAt)}</small>
-                <small>{card.reviewState.mastery}% mastery</small>
+                <small>{card.reviewState.mastery}% learned</small>
                 <small>{card.studyStats.totalReviews} reviews</small>
                 <div className="inline-actions">
                   <button className="ghost-button" type="button" onClick={() => void toggleCardFavorite(user.id, deck.id, card)}>
@@ -221,30 +244,29 @@ export function DeckPage() {
         <aside className="dashboard-side">
           <article className="side-panel">
             <div className="panel-heading">
-              <strong>Future AI evaluation</strong>
+              <strong>Long-answer cards</strong>
             </div>
             <p>
-              Explanation cards already store keywords, rubrics, and an evaluation request queue. The app
-              uses self-assessment today and is ready for server-side scoring later.
+              Longer response cards can store keywords, model answers, and extra notes so you can review
+              them more clearly later.
             </p>
           </article>
 
           <article className="side-panel">
             <div className="panel-heading">
-              <strong>Audio setup</strong>
+              <strong>Audio</strong>
             </div>
             <p>
-              Prompt and answer audio are generated through Next.js API routes with Google Text-to-Speech,
-              then stored privately in the MemoCards Supabase bucket.
+              Tap audio on a study card when you want to hear the question or answer out loud.
             </p>
           </article>
 
           <article className="side-panel">
             <div className="panel-heading">
-              <strong>User defaults</strong>
+              <strong>Your settings</strong>
             </div>
-            <p>Voice: {profile?.settings.defaultVoice ?? 'Not configured'}</p>
-            <p>Auto-play: {profile?.settings.autoPlayAudio ? 'On' : 'Off'}</p>
+            <p>Voice: {profile?.settings.defaultVoice ?? 'Not set'}</p>
+            <p>Auto-play setting: {profile?.settings.autoPlayAudio ? 'On' : 'Off'}</p>
           </article>
         </aside>
       </section>

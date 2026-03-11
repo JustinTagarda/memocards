@@ -39,7 +39,7 @@ export function StudyPage() {
   }
 
   if (!deck || (deckLoading && !deck) || (cardsLoading && cards.length === 0)) {
-    return <div className="empty-panel">Loading study session...</div>
+    return <div className="empty-panel">Loading study cards...</div>
   }
 
   const activeDeck = deck

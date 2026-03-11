@@ -1,7 +1,7 @@
 'use client'
 
 import { BookOpen, FolderPlus, Import, Search, Sparkles } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Modal } from '../components/Modal'
@@ -47,6 +47,11 @@ export function DashboardPage() {
   }, [decks, folderFilter, search, tagFilter])
 
   const isLoading = profileLoading || decksLoading
+  const firstName = profile?.displayName.split(' ')[0] ?? 'there'
+  const dueToday = profile?.summary.dueToday ?? 0
+  const totalSessions = profile?.summary.totalSessions ?? 0
+  const dailyGoal = profile?.settings.dailyGoal ?? 20
+  const nextFocusDeck = filteredDecks.find((deck) => deck.counts.dueCards > 0) ?? filteredDecks[0] ?? null
 
   if (!user) {
     return null
@@ -54,127 +59,194 @@ export function DashboardPage() {
 
   return (
     <div className="page-stack">
-      <section className="hero-panel">
-        <div className="hero-panel__copy">
-          <p className="eyebrow">Dashboard</p>
-          <h1>{profile ? `Welcome back, ${profile.displayName.split(' ')[0]}` : 'Your study dashboard'}</h1>
-          <p>
-            Keep decks organized, review what is due now, and track progress without mixing data across
-            accounts.
+      <section className="dashboard-hero">
+        <article className="hero-panel hero-panel--feature">
+          <div className="hero-panel__copy">
+            <p className="eyebrow">Study home</p>
+            <h1>{dueToday > 0 ? `Ready to review, ${firstName}?` : `Keep going, ${firstName}.`}</h1>
+            <p>
+              {dueToday > 0
+                ? `You have ${dueToday} card${dueToday === 1 ? '' : 's'} due today. Pick a deck and start where you left off.`
+                : 'Your due list is clear. Try Learn mode or open a deck to add a little progress today.'}
+            </p>
+          </div>
+
+          <div className="hero-panel__actions">
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => {
+                setEditingDeck(null)
+                setShowDeckModal(true)
+              }}
+            >
+              <BookOpen size={16} />
+              New deck
+            </button>
+            <button className="ghost-button" type="button" onClick={() => setShowImportModal(true)}>
+              <Import size={16} />
+              Import deck
+            </button>
+            <button className="ghost-button" type="button" onClick={() => setShowFolderModal(true)}>
+              <FolderPlus size={16} />
+              New folder
+            </button>
+          </div>
+
+          <div className="summary-grid">
+            <article className="summary-card">
+              <strong>{profile?.summary.totalDecks ?? 0}</strong>
+              <span>decks</span>
+            </article>
+            <article className="summary-card">
+              <strong>{dueToday}</strong>
+              <span>due today</span>
+            </article>
+            <article className="summary-card">
+              <strong>{profile?.summary.masteredCards ?? 0}</strong>
+              <span>learned well</span>
+            </article>
+          </div>
+        </article>
+
+        <article className="side-panel side-panel--focus">
+          <div className="panel-heading">
+            <strong>Today</strong>
+            <Sparkles size={16} />
+          </div>
+          <div className="list-stack">
+            <div className="activity-item">
+              <small>Daily goal</small>
+              <strong>{dailyGoal} cards</strong>
+            </div>
+            <div className="activity-item">
+              <small>Study streak</small>
+              <strong>{profile?.summary.studyStreak ?? 0} day{profile?.summary.studyStreak === 1 ? '' : 's'}</strong>
+            </div>
+            <div className="activity-item">
+              <small>Sessions logged</small>
+              <strong>{totalSessions}</strong>
+            </div>
+          </div>
+          <p className="hero-note">
+            {nextFocusDeck
+              ? `Best next step: ${nextFocusDeck.title}`
+              : 'Create a deck or import a set to get your study space started.'}
           </p>
-        </div>
-
-        <div className="hero-panel__actions">
-          <button
-            className="primary-button"
-            type="button"
-            onClick={() => {
-              setEditingDeck(null)
-              setShowDeckModal(true)
-            }}
-          >
-            <BookOpen size={16} />
-            New deck
-          </button>
-          <button className="ghost-button" type="button" onClick={() => setShowImportModal(true)}>
-            <Import size={16} />
-            Import deck
-          </button>
-          <button className="ghost-button" type="button" onClick={() => setShowFolderModal(true)}>
-            <FolderPlus size={16} />
-            New folder
-          </button>
-        </div>
-
-        <div className="summary-grid">
-          <article className="summary-card">
-            <strong>{profile?.summary.totalDecks ?? 0}</strong>
-            <span>decks</span>
-          </article>
-          <article className="summary-card">
-            <strong>{profile?.summary.dueToday ?? 0}</strong>
-            <span>due today</span>
-          </article>
-          <article className="summary-card">
-            <strong>{profile?.summary.masteredCards ?? 0}</strong>
-            <span>mastered</span>
-          </article>
-          <article className="summary-card">
-            <strong>{profile?.summary.studyStreak ?? 0}</strong>
-            <span>day streak</span>
-          </article>
-        </div>
+        </article>
       </section>
 
-      <section className="dashboard-controls">
-        <label className="search-box">
-          <Search size={16} />
-          <input
-            placeholder="Search decks, tags, topics"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
+      <section className="filters-card">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Find a deck</p>
+            <h2>Search and filter</h2>
+          </div>
+          <small>{filteredDecks.length} showing</small>
+        </div>
 
-        <select value={folderFilter} onChange={(event) => setFolderFilter(event.target.value)}>
-          <option value="all">All folders</option>
-          {folders.map((folder) => (
-            <option key={folder.id} value={folder.id}>
-              {folder.name}
-            </option>
-          ))}
-        </select>
+        <div className="filters-grid">
+          <label className="field filter-field">
+            <span>Search</span>
+            <div className="search-box">
+              <Search size={16} />
+              <input
+                placeholder="Search decks, tags, topics"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
+          </label>
 
-        <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
-          <option value="all">All tags</option>
-          {tags.map((tag) => (
-            <option key={tag} value={tag}>
-              {tag}
-            </option>
-          ))}
-        </select>
+          <label className="field filter-field">
+            <span>Folder</span>
+            <select value={folderFilter} onChange={(event) => setFolderFilter(event.target.value)}>
+              <option value="all">All folders</option>
+              {folders.map((folder) => (
+                <option key={folder.id} value={folder.id}>
+                  {folder.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field filter-field">
+            <span>Tag</span>
+            <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
+              <option value="all">All tags</option>
+              {tags.map((tag) => (
+                <option key={tag} value={tag}>
+                  {tag}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </section>
 
       <section className="dashboard-grid">
         <div className="deck-grid">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Your decks</p>
+              <h2>Study sets</h2>
+            </div>
+            <small>{profile?.summary.totalDecks ?? 0} total</small>
+          </div>
+
           {isLoading && <article className="empty-panel">Loading your decks...</article>}
           {!isLoading && filteredDecks.length === 0 && (
             <article className="empty-panel">
               <strong>No decks yet</strong>
-              <p>Create a deck or import one from JSON or CSV to get started.</p>
+              <p>Create a deck or import one to start studying here.</p>
             </article>
           )}
 
           {filteredDecks.map((deck) => {
             const folder = folders.find((item) => item.id === deck.folderId)
+            const mastery = deck.counts.totalCards === 0
+              ? 0
+              : Math.round((deck.counts.masteredCards / deck.counts.totalCards) * 100)
+
             return (
               <article key={deck.id} className="deck-card">
                 <div className="deck-card__header">
-                  <div>
-                    <span className="pill">{folder?.name ?? 'Private deck'}</span>
-                    <h2>{deck.title}</h2>
-                  </div>
-                  <span className="muted-label">{deck.counts.dueCards} due</span>
-                </div>
-
-                <p>{deck.description || 'No description yet.'}</p>
-
-                <div className="tag-row">
-                  {deck.tags.map((tag) => (
-                    <span key={tag} className="tag-pill">
-                      {tag}
+                  <div className="deck-card__identity">
+                    <span className="folder-chip" style={{ '--folder-color': folder?.color ?? '#f26a2e' } as CSSProperties}>
+                      {folder?.name ?? 'Private deck'}
                     </span>
-                  ))}
+                    <h2>{deck.title}</h2>
+                    <p>{deck.description || 'Add a short note so this deck is easier to spot later.'}</p>
+                  </div>
+                  <div className="deck-card__status">
+                    <span className="muted-label">{deck.counts.dueCards} due</span>
+                    <small>Updated {formatSmartDate(deck.updatedAt)}</small>
+                  </div>
                 </div>
 
-                <div className="metrics-row">
-                  <span>{deck.counts.totalCards} cards</span>
-                  <span>{deck.counts.masteredCards} mastered</span>
-                  <span>{deck.counts.favorites} favorites</span>
+                <div className="deck-card__progress">
+                  <div aria-hidden="true" className="progress-track">
+                    <span className="progress-fill" style={{ width: `${mastery}%` }} />
+                  </div>
+                  <div className="metrics-row">
+                    <span>{deck.counts.totalCards} cards</span>
+                    <span>{mastery}% learned</span>
+                    <span>{deck.counts.favorites} favorites</span>
+                  </div>
                 </div>
 
                 <div className="deck-card__footer">
-                  <small>Updated {formatSmartDate(deck.updatedAt)}</small>
+                  <div className="tag-row">
+                    {deck.tags.length > 0 ? (
+                      deck.tags.map((tag) => (
+                        <span key={tag} className="tag-pill">
+                          {tag}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="muted-label">No tags yet</span>
+                    )}
+                  </div>
                   <div className="inline-actions">
                     <Link className="ghost-button" href={`/app/decks/${deck.id}`}>
                       Open
@@ -211,19 +283,19 @@ export function DashboardPage() {
         <aside className="dashboard-side">
           <article className="side-panel">
             <div className="panel-heading">
-              <strong>Study momentum</strong>
+              <strong>Study pace</strong>
               <Sparkles size={16} />
             </div>
-            <p>{profile?.summary.totalSessions ?? 0} sessions logged so far.</p>
+            <p>{totalSessions} session{totalSessions === 1 ? '' : 's'} logged so far.</p>
             <p>Last study day: {formatCalendarDate(profile?.summary.lastStudyDate ?? null)}</p>
           </article>
 
           <article className="side-panel">
             <div className="panel-heading">
-              <strong>Recent sessions</strong>
+              <strong>Recent study</strong>
             </div>
             <div className="list-stack">
-              {sessions.length === 0 && <p className="hint-text">No sessions recorded yet.</p>}
+              {sessions.length === 0 && <p className="hint-text">Your recent sessions will show here.</p>}
               {sessions.map((session) => (
                 <div key={session.id} className="activity-item">
                   <strong>{session.deckTitle}</strong>
@@ -237,10 +309,10 @@ export function DashboardPage() {
 
           <article className="side-panel">
             <div className="panel-heading">
-              <strong>Recent activity</strong>
+              <strong>Latest activity</strong>
             </div>
             <div className="list-stack">
-              {activity.length === 0 && <p className="hint-text">Activity will appear here once you start.</p>}
+              {activity.length === 0 && <p className="hint-text">Activity will show up after your first study session.</p>}
               {activity.map((item) => (
                 <div key={item.id} className="activity-item">
                   <strong>{item.title}</strong>

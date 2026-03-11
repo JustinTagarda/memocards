@@ -9,28 +9,28 @@ import { useAuth } from '../hooks/useAuth'
 const features = [
   {
     icon: Brain,
-    title: 'Spaced repetition',
-    body: 'Review queues, due dates, streaks, and mastery tracking are built into every deck.',
+    title: 'Smart review',
+    body: 'MemoCards keeps track of what is due, what is new, and what needs more practice.',
   },
   {
     icon: Lock,
-    title: 'Private by default',
-    body: 'MemoCards lives in its own Supabase schema with row-level security tied to your account.',
+    title: 'Private space',
+    body: 'Your decks stay in your own study space, so your cards and notes feel personal.',
   },
   {
     icon: Volume2,
-    title: 'Audio playback',
-    body: 'Use Google Text-to-Speech for card prompts and answers without exposing privileged APIs.',
+    title: 'Listen to cards',
+    body: 'Play prompts and answers out loud when reading feels slow or you want to study hands-free.',
   },
   {
     icon: Sparkles,
-    title: 'AI-ready schema',
-    body: 'Explanation cards already store rubrics and expected concepts for future answer grading.',
+    title: 'Long-answer help',
+    body: 'Store model answers, keywords, and notes for cards that need more than one-word replies.',
   },
   {
     icon: CloudUpload,
-    title: 'Import and export',
-    body: 'Bring in JSON or CSV decks, then export them again without weakening user isolation.',
+    title: 'Bring your old decks',
+    body: 'Import card sets from files, then export them again whenever you need a copy.',
   },
 ]
 
@@ -49,16 +49,16 @@ export function LandingPage() {
       <section className="landing-hero">
         <div className="landing-copy">
           <p className="eyebrow">MemoCards</p>
-          <h1>Private flashcards with spaced repetition, TTS, and room to grow.</h1>
+          <h1>Study cards that feel calm, personal, and easy to keep up with.</h1>
           <p className="landing-summary">
-            Build study decks, organize them into folders, review on mobile, and keep every card under
-            your own private workspace.
+            Build decks, sort them by subject, and review on your phone without losing track of what to
+            study next.
           </p>
 
           {!hasSupabaseEnvironment && (
             <div className="warning-banner">
-              Supabase environment variables are missing. Add them from `.env.example` before using
-              production services.
+              Some setup details are missing. Add them from `.env.example` before using connected
+              services.
             </div>
           )}
 
@@ -71,10 +71,10 @@ export function LandingPage() {
               type="button"
               onClick={() => void signIn()}
             >
-              {loading ? 'Preparing...' : 'Continue with Google'}
+              {loading ? 'Getting ready...' : 'Start with Google'}
             </button>
             <a className="ghost-button" href="#features">
-              View features
+              See how it works
             </a>
           </div>
         </div>
@@ -82,13 +82,13 @@ export function LandingPage() {
         <div className="hero-preview" aria-hidden="true">
           <div className="preview-card">
             <span className="pill">Biology finals</span>
-            <strong>18 due now</strong>
-            <p>Review, cram, or learn with audio playback and explanation grading hooks.</p>
+            <strong>18 cards ready</strong>
+            <p>Pick up where you left off, hear the card out loud, and keep your streak moving.</p>
           </div>
           <div className="preview-card preview-card--accent">
-            <span className="pill">Streak</span>
-            <strong>7 days</strong>
-            <p>Daily goal progress, recent activity, and session history stay synced in Supabase.</p>
+            <span className="pill">Today</span>
+            <strong>12 / 20 done</strong>
+            <p>See your goal, recent sessions, and due work in one study home.</p>
           </div>
         </div>
       </section>

@@ -117,7 +117,7 @@ export function DeckForm({ initialValue, folders, onCancel, onSubmit }: DeckForm
         </label>
 
         <label className="field">
-          <span>Default study mode</span>
+          <span>Start mode</span>
           <select
             value={draft.preferences.defaultMode}
             onChange={(event) => {
@@ -153,7 +153,7 @@ export function DeckForm({ initialValue, folders, onCancel, onSubmit }: DeckForm
         </label>
 
         <label className="field">
-          <span>Daily goal</span>
+          <span>Cards per day</span>
           <input
             min={5}
             max={100}
@@ -187,7 +187,7 @@ export function DeckForm({ initialValue, folders, onCancel, onSubmit }: DeckForm
               }))
             }}
           />
-          Shuffle by default
+          Shuffle cards
         </label>
 
         <label>
@@ -204,7 +204,7 @@ export function DeckForm({ initialValue, folders, onCancel, onSubmit }: DeckForm
               }))
             }}
           />
-          Auto-play audio while studying
+          Play audio automatically
         </label>
       </div>
 
@@ -373,10 +373,10 @@ export function CardForm({ initialValue, onCancel, onSubmit }: CardFormProps) {
             }))
           }}
         >
-          <option value="basic">Basic Q/A</option>
-          <option value="term">Term / definition</option>
+          <option value="basic">Question &amp; answer</option>
+          <option value="term">Term &amp; definition</option>
           <option value="multiple_choice">Multiple choice</option>
-          <option value="explanation">Explanation-based</option>
+          <option value="explanation">Long answer</option>
         </select>
       </label>
 
@@ -447,7 +447,7 @@ export function CardForm({ initialValue, onCancel, onSubmit }: CardFormProps) {
           </div>
 
           <label className="field">
-            <span>Why this is correct</span>
+            <span>Helpful note</span>
             <textarea
               rows={3}
               value={draft.explanation}
@@ -510,7 +510,7 @@ export function CardForm({ initialValue, onCancel, onSubmit }: CardFormProps) {
           </div>
 
           <label className="field">
-            <span>Rubric for future AI evaluation</span>
+            <span>Teacher notes</span>
             <textarea
               rows={3}
               value={draft.expectedAnswer.rubric}
@@ -588,18 +588,18 @@ export function ImportDialog({ onCancel, onSubmit }: ImportDialogProps) {
   return (
     <div className="stack-form">
       <label className="field">
-        <span>Choose a `.json` or `.csv` file</span>
+        <span>Pick a `.json` or `.csv` file</span>
         <input accept=".json,.csv,text/csv,application/json" type="file" onInput={handleFile} />
       </label>
 
-      {parsing && <p className="hint-text">Parsing your deck...</p>}
+      {parsing && <p className="hint-text">Reading your deck...</p>}
       {error && <p className="error-text">{error}</p>}
 
       {payload && (
         <div className="preview-card">
           <strong>{payload.deck.title || 'Imported deck'}</strong>
           <p>{payload.deck.description || 'No description provided.'}</p>
-          <p>{payload.cards.length} cards detected.</p>
+          <p>{payload.cards.length} cards found.</p>
         </div>
       )}
 
