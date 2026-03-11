@@ -58,86 +58,101 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="page-stack">
+    <div className="page-stack page-stack--dashboard">
       <section className="dashboard-hero">
-        <article className="hero-panel hero-panel--feature">
+        <article className="hero-panel hero-panel--feature hero-panel--dashboard">
           <div className="hero-panel__copy">
             <p className="eyebrow">Study home</p>
             <h1>{dueToday > 0 ? `Ready to review, ${firstName}?` : `Keep going, ${firstName}.`}</h1>
             <p>
               {dueToday > 0
                 ? `You have ${dueToday} card${dueToday === 1 ? '' : 's'} due today. Pick a deck and start where you left off.`
-                : 'Your due list is clear. Try Learn mode or open a deck to add a little progress today.'}
+                : 'Your due list is clear. Open a deck or try Learn mode to make a little progress today.'}
             </p>
           </div>
 
-          <div className="hero-panel__actions">
-            <button
-              className="primary-button"
-              type="button"
-              onClick={() => {
-                setEditingDeck(null)
-                setShowDeckModal(true)
-              }}
-            >
-              <BookOpen size={16} />
-              New deck
-            </button>
-            <button className="ghost-button" type="button" onClick={() => setShowImportModal(true)}>
-              <Import size={16} />
-              Import deck
-            </button>
-            <button className="ghost-button" type="button" onClick={() => setShowFolderModal(true)}>
-              <FolderPlus size={16} />
-              New folder
-            </button>
-          </div>
+          <div className="hero-panel__tools">
+            <div className="hero-panel__actions hero-panel__actions--dashboard">
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => {
+                  setEditingDeck(null)
+                  setShowDeckModal(true)
+                }}
+              >
+                <BookOpen size={16} />
+                New deck
+              </button>
+              <button className="ghost-button" type="button" onClick={() => setShowImportModal(true)}>
+                <Import size={16} />
+                Import deck
+              </button>
+              <button className="ghost-button" type="button" onClick={() => setShowFolderModal(true)}>
+                <FolderPlus size={16} />
+                New folder
+              </button>
+            </div>
 
-          <div className="summary-grid">
-            <article className="summary-card">
-              <strong>{profile?.summary.totalDecks ?? 0}</strong>
-              <span>decks</span>
-            </article>
-            <article className="summary-card">
-              <strong>{dueToday}</strong>
-              <span>due today</span>
-            </article>
-            <article className="summary-card">
-              <strong>{profile?.summary.masteredCards ?? 0}</strong>
-              <span>learned well</span>
-            </article>
+            <div className="summary-grid summary-grid--dashboard">
+              <article className="summary-card">
+                <strong>{profile?.summary.totalDecks ?? 0}</strong>
+                <span>decks</span>
+              </article>
+              <article className="summary-card">
+                <strong>{dueToday}</strong>
+                <span>due today</span>
+              </article>
+              <article className="summary-card">
+                <strong>{profile?.summary.masteredCards ?? 0}</strong>
+                <span>learned well</span>
+              </article>
+            </div>
           </div>
         </article>
 
-        <article className="side-panel side-panel--focus">
+        <article className="side-panel side-panel--focus side-panel--today">
           <div className="panel-heading">
             <strong>Today</strong>
             <Sparkles size={16} />
           </div>
-          <div className="list-stack">
-            <div className="activity-item">
+          <div className="today-grid">
+            <div className="today-stat">
               <small>Daily goal</small>
               <strong>{dailyGoal} cards</strong>
             </div>
-            <div className="activity-item">
-              <small>Study streak</small>
+            <div className="today-stat">
+              <small>Due today</small>
+              <strong>{dueToday}</strong>
+            </div>
+            <div className="today-stat">
+              <small>Streak</small>
               <strong>{profile?.summary.studyStreak ?? 0} day{profile?.summary.studyStreak === 1 ? '' : 's'}</strong>
             </div>
-            <div className="activity-item">
-              <small>Sessions logged</small>
+            <div className="today-stat">
+              <small>Sessions</small>
               <strong>{totalSessions}</strong>
             </div>
           </div>
-          <p className="hero-note">
-            {nextFocusDeck
-              ? `Best next step: ${nextFocusDeck.title}`
-              : 'Create a deck or import a set to get your study space started.'}
-          </p>
+          {nextFocusDeck ? (
+            <div className="hero-note hero-note--action">
+              <small>Best next step</small>
+              <button
+                className="ghost-button ghost-button--inline"
+                type="button"
+                onClick={() => router.push(`/app/decks/${nextFocusDeck.id}/study`)}
+              >
+                Study {nextFocusDeck.title}
+              </button>
+            </div>
+          ) : (
+            <p className="hero-note">Create a deck or import a set to get your study space started.</p>
+          )}
         </article>
       </section>
 
-      <section className="filters-card">
-        <div className="section-heading">
+      <section className="filters-card filters-card--dashboard">
+        <div className="section-heading section-heading--toolbar">
           <div>
             <p className="eyebrow">Find a deck</p>
             <h2>Search and filter</h2>
@@ -185,8 +200,8 @@ export function DashboardPage() {
       </section>
 
       <section className="dashboard-grid">
-        <div className="deck-grid">
-          <div className="section-heading">
+        <div className="deck-grid deck-grid--dashboard">
+          <div className="section-heading section-heading--toolbar">
             <div>
               <p className="eyebrow">Your decks</p>
               <h2>Study sets</h2>
@@ -209,7 +224,7 @@ export function DashboardPage() {
               : Math.round((deck.counts.masteredCards / deck.counts.totalCards) * 100)
 
             return (
-              <article key={deck.id} className="deck-card">
+              <article key={deck.id} className="deck-card deck-card--dashboard">
                 <div className="deck-card__header">
                   <div className="deck-card__identity">
                     <span className="folder-chip" style={{ '--folder-color': folder?.color ?? '#f26a2e' } as CSSProperties}>
@@ -235,7 +250,7 @@ export function DashboardPage() {
                   </div>
                 </div>
 
-                <div className="deck-card__footer">
+                <div className="deck-card__footer deck-card__footer--dashboard">
                   <div className="tag-row">
                     {deck.tags.length > 0 ? (
                       deck.tags.map((tag) => (
@@ -247,25 +262,31 @@ export function DashboardPage() {
                       <span className="muted-label">No tags yet</span>
                     )}
                   </div>
-                  <div className="inline-actions">
-                    <Link className="ghost-button" href={`/app/decks/${deck.id}`}>
-                      Open
-                    </Link>
-                    <button className="ghost-button" type="button" onClick={() => router.push(`/app/decks/${deck.id}/study`)}>
-                      Study
-                    </button>
+                  <div className="deck-card__actions">
+                    <div className="deck-card__actions-main">
+                      <Link className="ghost-button" href={`/app/decks/${deck.id}`}>
+                        Open
+                      </Link>
+                      <button
+                        className="primary-button primary-button--compact"
+                        type="button"
+                        onClick={() => router.push(`/app/decks/${deck.id}/study`)}
+                      >
+                        Study
+                      </button>
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        onClick={() => {
+                          setEditingDeck(deck)
+                          setShowDeckModal(true)
+                        }}
+                      >
+                        Edit
+                      </button>
+                    </div>
                     <button
-                      className="ghost-button"
-                      type="button"
-                      onClick={() => {
-                        setEditingDeck(deck)
-                        setShowDeckModal(true)
-                      }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="ghost-button danger-button"
+                      className="button-link button-link--danger deck-card__delete"
                       type="button"
                       onClick={() => {
                         void deleteDeck(user.id, deck.id)
@@ -281,7 +302,7 @@ export function DashboardPage() {
         </div>
 
         <aside className="dashboard-side">
-          <article className="side-panel">
+          <article className="side-panel side-panel--compact">
             <div className="panel-heading">
               <strong>Study pace</strong>
               <Sparkles size={16} />
@@ -290,7 +311,7 @@ export function DashboardPage() {
             <p>Last study day: {formatCalendarDate(profile?.summary.lastStudyDate ?? null)}</p>
           </article>
 
-          <article className="side-panel">
+          <article className="side-panel side-panel--compact">
             <div className="panel-heading">
               <strong>Recent study</strong>
             </div>
@@ -307,11 +328,11 @@ export function DashboardPage() {
             </div>
           </article>
 
-          <article className="side-panel">
+          <article className="side-panel side-panel--compact">
             <div className="panel-heading">
               <strong>Latest activity</strong>
             </div>
-            <div className="list-stack">
+            <div className="list-stack list-stack--scroll">
               {activity.length === 0 && <p className="hint-text">Activity will show up after your first study session.</p>}
               {activity.map((item) => (
                 <div key={item.id} className="activity-item">
