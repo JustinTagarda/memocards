@@ -5,13 +5,14 @@ import { useMemo, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { Modal } from '../components/Modal'
+import { QuickAddComposer } from '../components/QuickAddComposer'
 import { CardForm, DeckForm, ExportMenu } from '../components/forms'
 import { useAuth } from '../hooks/useAuth'
 import { useCards, useDeck, useFolders, useUserProfile } from '../hooks/useMemoCards'
 import { getCardPrompt, getCardSearchText } from '../lib/cardText'
 import { formatSmartDate } from '../lib/utils'
 import { deleteCard, deleteDeck, saveCard, saveDeck, toggleCardFavorite } from '../services/memocards'
-import type { Card } from '../types/models'
+import type { Card, CardDraft } from '../types/models'
 
 export function DeckPage() {
   const params = useParams<{ deckId: string }>()
@@ -29,6 +30,7 @@ export function DeckPage() {
   const [showDeckModal, setShowDeckModal] = useState(false)
   const [showCardModal, setShowCardModal] = useState(false)
   const [editingCard, setEditingCard] = useState<Card | null>(null)
+  const [quickAddDraft, setQuickAddDraft] = useState<CardDraft | null>(null)
 
   const tags = useMemo(
     () => Array.from(new Set(cards.flatMap((card) => card.tags))).sort((left, right) => left.localeCompare(right)),
@@ -147,6 +149,7 @@ export function DeckPage() {
             type="button"
             onClick={() => {
               setEditingCard(null)
+              setQuickAddDraft(null)
               setShowCardModal(true)
             }}
           >
@@ -187,6 +190,19 @@ export function DeckPage() {
         </div>
       </section>
 
+      {profile && (
+        <QuickAddComposer
+          onExpand={(draft) => {
+            setEditingCard(null)
+            setQuickAddDraft(draft)
+            setShowCardModal(true)
+          }}
+          onSave={async (draft) => {
+            await saveCard(user.id, deck.id, draft, profile.settings)
+          }}
+        />
+      )}
+
       <section className="deck-workspace">
         <div className="card-list">
           {filteredCards.length === 0 && (
@@ -226,6 +242,7 @@ export function DeckPage() {
                     type="button"
                     onClick={() => {
                       setEditingCard(card)
+                      setQuickAddDraft(null)
                       setShowCardModal(true)
                     }}
                   >
@@ -292,7 +309,15 @@ export function DeckPage() {
       )}
 
       {showCardModal && profile && (
-        <Modal title={editingCard ? 'Edit card' : 'Create card'} onClose={() => setShowCardModal(false)} width="lg">
+        <Modal
+          title={editingCard ? 'Edit card' : 'Create card'}
+          onClose={() => {
+            setShowCardModal(false)
+            setEditingCard(null)
+            setQuickAddDraft(null)
+          }}
+          width="lg"
+        >
           <CardForm
             initialValue={
               editingCard
@@ -308,16 +333,18 @@ export function DeckPage() {
                     tags: editingCard.tags,
                     isFavorite: editingCard.isFavorite,
                   }
-                : undefined
+                : quickAddDraft ?? undefined
             }
             onCancel={() => {
               setShowCardModal(false)
               setEditingCard(null)
+              setQuickAddDraft(null)
             }}
             onSubmit={async (draft) => {
               await saveCard(user.id, deck.id, draft, profile.settings, editingCard ?? undefined)
               setShowCardModal(false)
               setEditingCard(null)
+              setQuickAddDraft(null)
             }}
           />
         </Modal>
