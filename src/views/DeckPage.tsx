@@ -146,10 +146,6 @@ export function DeckPage() {
             <button className="primary-button" type="button" onClick={() => router.push(`/app/decks/${deck.id}/study`)}>
               Study deck
             </button>
-            <Link className="ghost-button" href={`/app/decks/${deck.id}/import` as Route}>
-              <Upload size={16} />
-              Import notes
-            </Link>
             <button className="ghost-button" type="button" onClick={() => setShowDeckModal(true)}>
               Edit deck
             </button>
@@ -244,6 +240,12 @@ export function DeckPage() {
       {profile && (
         <QuickAddComposer
           deckId={deck.id}
+          footerAction={
+            <Link className="ghost-button" href={`/app/decks/${deck.id}/import` as Route}>
+              <Upload size={16} />
+              Import notes
+            </Link>
+          }
           preferredType={quickAddPreferredType}
           onExpand={(draft) => {
             setEditingCard(null)

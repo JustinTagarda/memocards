@@ -1375,6 +1375,18 @@ textarea:focus {
   align-items: center;
 }
 
+.quick-add-actions__main,
+.quick-add-actions__aside {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.quick-add-actions__aside {
+  margin-left: auto;
+}
+
 .quick-add-actions .primary-button,
 .quick-add-actions .ghost-button {
   min-height: 2.75rem;

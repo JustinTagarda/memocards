@@ -1,7 +1,7 @@
 'use client'
 
 import { ClipboardPaste, Expand, Plus } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { loadQuickAddState, saveQuickAddState, type QuickAddMode } from '../lib/cardEntry'
 import type { CardDraft } from '../types/models'
 import {
@@ -17,6 +17,7 @@ interface QuickAddComposerProps {
   deckId: string
   disabled?: boolean
   preferredType?: QuickAddCardType
+  footerAction?: ReactNode
   onExpand: (draft: CardDraft) => void
   onSave: (draft: CardDraft) => Promise<void>
 }
@@ -25,6 +26,7 @@ export function QuickAddComposer({
   deckId,
   disabled = false,
   preferredType = 'basic',
+  footerAction,
   onExpand,
   onSave,
 }: QuickAddComposerProps) {
@@ -342,52 +344,55 @@ export function QuickAddComposer({
       )}
 
       <div className="modal-actions quick-add-actions">
-        {mode === 'single' ? (
-          <>
-            <button
-              className="primary-button"
-              disabled={disabled || saving || !singleValue.trim()}
-              type="button"
-              onClick={() => {
-                void saveSingle()
-              }}
-            >
-              {saving ? 'Saving...' : 'Add card'}
-            </button>
-            <button
-              className="ghost-button"
-              disabled={!canExpand || saving}
-              type="button"
-              onClick={handleExpand}
-            >
-              <Expand size={16} />
-              Expand
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              className="ghost-button"
-              disabled={disabled || saving || !bulkValue.trim()}
-              type="button"
-              onClick={buildPreview}
-            >
-              {preview ? 'Refresh preview' : 'Preview cards'}
-            </button>
-            <button
-              className="primary-button"
-              disabled={disabled || saving || !(preview?.drafts.length ?? 0)}
-              type="button"
-              onClick={() => {
-                void saveBulk()
-              }}
-            >
-              {saving
-                ? 'Saving...'
-                : `Save ${preview?.drafts.length ?? 0} card${preview?.drafts.length === 1 ? '' : 's'}`}
-            </button>
-          </>
-        )}
+        <div className="quick-add-actions__main">
+          {mode === 'single' ? (
+            <>
+              <button
+                className="primary-button"
+                disabled={disabled || saving || !singleValue.trim()}
+                type="button"
+                onClick={() => {
+                  void saveSingle()
+                }}
+              >
+                {saving ? 'Saving...' : 'Add card'}
+              </button>
+              <button
+                className="ghost-button"
+                disabled={!canExpand || saving}
+                type="button"
+                onClick={handleExpand}
+              >
+                <Expand size={16} />
+                Expand
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                className="ghost-button"
+                disabled={disabled || saving || !bulkValue.trim()}
+                type="button"
+                onClick={buildPreview}
+              >
+                {preview ? 'Refresh preview' : 'Preview cards'}
+              </button>
+              <button
+                className="primary-button"
+                disabled={disabled || saving || !(preview?.drafts.length ?? 0)}
+                type="button"
+                onClick={() => {
+                  void saveBulk()
+                }}
+              >
+                {saving
+                  ? 'Saving...'
+                  : `Save ${preview?.drafts.length ?? 0} card${preview?.drafts.length === 1 ? '' : 's'}`}
+              </button>
+            </>
+          )}
+        </div>
+        {footerAction && <div className="quick-add-actions__aside">{footerAction}</div>}
       </div>
     </section>
   )
