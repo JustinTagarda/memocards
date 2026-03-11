@@ -67,6 +67,7 @@ export function DeckPage() {
       return searchMatch && tagMatch && favoriteMatch
     })
   }, [cards, favoritesOnly, search, tagFilter])
+  const existingQuestions = useMemo(() => cards.map((card) => getCardPrompt(card)), [cards])
 
   if (!user || !deckId) {
     return null
@@ -240,6 +241,7 @@ export function DeckPage() {
       {profile && (
         <QuickAddComposer
           deckId={deck.id}
+          existingQuestions={existingQuestions}
           footerAction={
             <Link className="ghost-button" href={`/app/decks/${deck.id}/import` as Route}>
               <Upload size={16} />

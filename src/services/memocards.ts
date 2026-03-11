@@ -599,13 +599,22 @@ export async function saveDeck(uid: string, draft: DeckDraft, deckId?: string) {
 }
 
 export async function deleteDeck(uid: string, deckId: string) {
+  const deckRow = await assertNoError(
+    memocardsSchema()
+      .from('decks')
+      .select('title')
+      .eq('user_id', uid)
+      .eq('id', deckId)
+      .maybeSingle(),
+  )
+
   await assertNoError(memocardsSchema().from('cards').delete().eq('user_id', uid).eq('deck_id', deckId))
   await assertNoError(memocardsSchema().from('decks').delete().eq('user_id', uid).eq('id', deckId))
   await createActivity(uid, {
     type: 'deck_deleted',
     title: 'Deck deleted',
-    description: 'Removed a deck and its cards',
-    deckId,
+    description: deckRow?.title ? `Removed ${deckRow.title} and its cards` : 'Removed a deck and its cards',
+    deckId: null,
     cardId: null,
   })
   notifyDataChanged()

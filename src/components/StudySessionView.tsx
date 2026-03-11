@@ -1,10 +1,12 @@
 'use client'
 
 import { Headphones, RotateCcw, Sparkles, Volume2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { getCardAnswer, getCardPrompt } from '../lib/cardText'
 import { formatSmartDate, pluralize, shuffleArray } from '../lib/utils'
 import type { Card, Deck, SelfAssessment, SessionCardResult, StudyMode } from '../types/models'
+
+const AUTO_PLAY_AUDIO_SESSION_KEY = 'memocards:study:auto-play-audio'
 
 interface StudySessionViewProps {
   deck: Deck
@@ -18,6 +20,7 @@ interface StudySessionViewProps {
   onComplete: (mode: StudyMode, startedAt: string, results: SessionCardResult[]) => Promise<void>
   onQueueEvaluation: (card: Card, submittedAnswer: string) => Promise<'queued' | 'disabled' | void>
   onPlayAudio: (card: Card, side: 'prompt' | 'answer') => Promise<void>
+  onWarmAudio?: (card: Card, side: 'prompt' | 'answer') => Promise<void> | void
 }
 
 function buildStudyQueueIds(
@@ -45,11 +48,31 @@ function buildStudyQueueIds(
   return nextQueue.map((card) => card.id)
 }
 
-const assessments: Array<{ value: SelfAssessment; label: string; hint: string }> = [
-  { value: 'again', label: 'Again', hint: 'Reset card' },
-  { value: 'hard', label: 'Hard', hint: 'Sooner review' },
-  { value: 'good', label: 'Good', hint: 'Normal spacing' },
-  { value: 'easy', label: 'Easy', hint: 'Longer spacing' },
+const assessments: Array<{ value: SelfAssessment; label: string; hint: string; tooltip: string }> = [
+  {
+    value: 'again',
+    label: 'Again',
+    hint: 'Reset card',
+    tooltip: 'Choose Again if you missed it or were mostly guessing. The card will come back soon so you can rebuild it.',
+  },
+  {
+    value: 'hard',
+    label: 'Hard',
+    hint: 'Sooner review',
+    tooltip: 'Choose Hard if you got it, but only with effort. The card stays in rotation and returns sooner than normal.',
+  },
+  {
+    value: 'good',
+    label: 'Good',
+    hint: 'Normal spacing',
+    tooltip: 'Choose Good if you remembered it correctly without much trouble. This is the normal successful review option.',
+  },
+  {
+    value: 'easy',
+    label: 'Easy',
+    hint: 'Longer spacing',
+    tooltip: 'Choose Easy if the answer was immediate and obvious. The card will be scheduled farther out than usual.',
+  },
 ]
 
 export function StudySessionView({
@@ -59,6 +82,7 @@ export function StudySessionView({
   onComplete,
   onQueueEvaluation,
   onPlayAudio,
+  onWarmAudio,
 }: StudySessionViewProps) {
   const [mode, setMode] = useState<StudyMode>(deck.preferences.defaultMode)
   const [shuffle, setShuffle] = useState(deck.preferences.shuffleByDefault)
@@ -75,6 +99,8 @@ export function StudySessionView({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [evaluationStatus, setEvaluationStatus] = useState<string | null>(null)
+  const [autoPlayAudio, setAutoPlayAudio] = useState(false)
+  const [autoPlayAudioReady, setAutoPlayAudioReady] = useState(false)
 
   const cardsById = useMemo(
     () => new Map(cards.map((card) => [card.id, card])),
@@ -86,8 +112,28 @@ export function StudySessionView({
   )
 
   const currentCard = studyQueue[currentIndex] ?? null
+  const nextCard = studyQueue[currentIndex + 1] ?? null
   const progress = studyQueue.length === 0 ? 0 : Math.min(100, (currentIndex / studyQueue.length) * 100)
   const sessionFinished = studyQueue.length > 0 && currentIndex >= studyQueue.length
+  const playAudioForCard = useEffectEvent(onPlayAudio)
+  const warmAudioForCard = useEffectEvent(onWarmAudio ?? (() => undefined))
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    setAutoPlayAudio(window.sessionStorage.getItem(AUTO_PLAY_AUDIO_SESSION_KEY) === 'true')
+    setAutoPlayAudioReady(true)
+  }, [])
+
+  useEffect(() => {
+    if (!autoPlayAudioReady || typeof window === 'undefined') {
+      return
+    }
+
+    window.sessionStorage.setItem(AUTO_PLAY_AUDIO_SESSION_KEY, autoPlayAudio ? 'true' : 'false')
+  }, [autoPlayAudio, autoPlayAudioReady])
 
   useEffect(() => {
     setMode(deck.preferences.defaultMode)
@@ -173,6 +219,26 @@ export function StudySessionView({
       void handleFinish()
     }
   }, [results.length, saved, saving, sessionFinished])
+
+  useEffect(() => {
+    if (!autoPlayAudioReady || !autoPlayAudio || revealed || !currentCard) {
+      return
+    }
+
+    void playAudioForCard(currentCard, 'prompt')
+  }, [autoPlayAudio, autoPlayAudioReady, currentCard?.id, revealed])
+
+  useEffect(() => {
+    if (!currentCard) {
+      return
+    }
+
+    void warmAudioForCard(currentCard, 'prompt')
+
+    if (nextCard) {
+      void warmAudioForCard(nextCard, 'prompt')
+    }
+  }, [currentCard?.id, nextCard?.id])
 
   if (sessionFinished) {
     const accuracy =
@@ -300,20 +366,16 @@ export function StudySessionView({
         <div className="study-card__content">
           <div className="study-card__header">
             <span className="pill">{currentCard?.type.replace('_', ' ')}</span>
-            <div className="inline-actions">
-              <button
-                className="ghost-button"
-                type="button"
-                onClick={() => {
-                  if (!currentCard) {
-                    return
-                  }
-                  void onPlayAudio(currentCard, revealed ? 'answer' : 'prompt')
-                }}
-              >
+            <div className="inline-actions inline-actions--study">
+              <label className="filter-toggle">
+                <input
+                  checked={autoPlayAudio}
+                  type="checkbox"
+                  onChange={(event) => setAutoPlayAudio(event.target.checked)}
+                />
                 <Volume2 size={16} />
-                Play audio
-              </button>
+                Auto-play audio
+              </label>
             </div>
           </div>
 
@@ -409,7 +471,9 @@ export function StudySessionView({
             {assessments.map((assessment) => (
               <button
                 key={assessment.value}
+                aria-describedby={`assessment-tip-${assessment.value}`}
                 className="assessment-button"
+                title={assessment.tooltip}
                 type="button"
                 onClick={() => {
                   void handleAssessment(assessment.value)
@@ -417,6 +481,9 @@ export function StudySessionView({
               >
                 <strong>{assessment.label}</strong>
                 <small>{assessment.hint}</small>
+                <span id={`assessment-tip-${assessment.value}`} className="assessment-button__tooltip" role="tooltip">
+                  {assessment.tooltip}
+                </span>
               </button>
             ))}
           </div>

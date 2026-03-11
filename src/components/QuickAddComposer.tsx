@@ -2,6 +2,7 @@
 
 import { ClipboardPaste, Expand, Plus } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { Modal } from './Modal'
 import { loadQuickAddState, saveQuickAddState, type QuickAddMode } from '../lib/cardEntry'
 import type { CardDraft } from '../types/models'
 import {
@@ -17,15 +18,37 @@ interface QuickAddComposerProps {
   deckId: string
   disabled?: boolean
   preferredType?: QuickAddCardType
+  existingQuestions?: string[]
   footerAction?: ReactNode
   onExpand: (draft: CardDraft) => void
   onSave: (draft: CardDraft) => Promise<void>
+}
+
+function normalizeQuestion(value: string) {
+  return value.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+function getDraftQuestion(draft: CardDraft) {
+  switch (draft.type) {
+    case 'basic':
+    case 'term':
+      return draft.front || draft.prompt
+    case 'multiple_choice':
+    case 'explanation':
+      return draft.prompt
+  }
+}
+
+function getBulkPlaceholder(type: QuickAddCardType) {
+  const meta = QUICK_ADD_TYPE_META[type]
+  return `${meta.example}\n${meta.example}`
 }
 
 export function QuickAddComposer({
   deckId,
   disabled = false,
   preferredType = 'basic',
+  existingQuestions = [],
   footerAction,
   onExpand,
   onSave,
@@ -39,11 +62,16 @@ export function QuickAddComposer({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [duplicateQuestion, setDuplicateQuestion] = useState<string | null>(null)
   const [restoredDraft, setRestoredDraft] = useState(Boolean(storedState.singleValue || storedState.bulkValue))
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const meta = QUICK_ADD_TYPE_META[type]
   const currentValue = mode === 'single' ? singleValue : bulkValue
+  const existingQuestionSet = useMemo(
+    () => new Set(existingQuestions.map((question) => normalizeQuestion(question)).filter(Boolean)),
+    [existingQuestions],
+  )
 
   useEffect(() => {
     saveQuickAddState(deckId, {
@@ -107,10 +135,23 @@ export function QuickAddComposer({
       return
     }
 
+    const nextQuestion = normalizeQuestion(getDraftQuestion(draft))
+    if (nextQuestion && existingQuestionSet.has(nextQuestion)) {
+      setDuplicateQuestion(getDraftQuestion(draft).trim())
+      return
+    }
+
     setSaving(true)
     try {
       await onSave(draft)
+      saveQuickAddState(deckId, {
+        mode,
+        type,
+        singleValue: '',
+        bulkValue: '',
+      })
       setSingleValue('')
+      setBulkValue('')
       setSuccess('Card added.')
       setRestoredDraft(false)
       inputRef.current?.focus()
@@ -156,6 +197,13 @@ export function QuickAddComposer({
         savedCount += 1
       }
 
+      saveQuickAddState(deckId, {
+        mode,
+        type,
+        singleValue: '',
+        bulkValue: '',
+      })
+      setSingleValue('')
       setBulkValue('')
       setPreview(null)
       setRestoredDraft(false)
@@ -210,190 +258,217 @@ export function QuickAddComposer({
   }
 
   return (
-    <section className="filters-card quick-add-card">
-      <div className="section-heading section-heading--toolbar">
-        <div>
-          <p className="eyebrow">Quick Add</p>
-          <h2>Add cards faster</h2>
-          <p className="quick-add-intro">Full editor stays available for tags, notes, and richer setup.</p>
-        </div>
-      </div>
-
-      <div className="quick-add-toolbar">
-        <div className="quick-add-mode" role="tablist" aria-label="Quick add mode">
-          <button
-            aria-selected={mode === 'single'}
-            className={mode === 'single' ? 'nav-link nav-link--active' : 'nav-link'}
-            role="tab"
-            type="button"
-            onClick={() => {
-              setMode('single')
-              resetFeedback()
-              clearPreview()
-            }}
-          >
-            <Plus size={16} />
-            Single
-          </button>
-          <button
-            aria-selected={mode === 'bulk'}
-            className={mode === 'bulk' ? 'nav-link nav-link--active' : 'nav-link'}
-            role="tab"
-            type="button"
-            onClick={() => {
-              setMode('bulk')
-              resetFeedback()
-              clearPreview()
-            }}
-          >
-            <ClipboardPaste size={16} />
-            Paste many
-          </button>
+    <>
+      <section className="filters-card quick-add-card">
+        <div className="section-heading section-heading--toolbar">
+          <div>
+            <p className="eyebrow">Quick Add</p>
+            <h2>Add cards faster</h2>
+            <p className="quick-add-intro">Full editor stays available for tags, notes, and richer setup.</p>
+          </div>
         </div>
 
-        <label className="field quick-add-toolbar__type">
-          <span>Type</span>
-          <select
-            value={type}
+        <div className="quick-add-toolbar">
+          <div className="quick-add-mode" role="tablist" aria-label="Quick add mode">
+            <button
+              aria-selected={mode === 'single'}
+              className={mode === 'single' ? 'nav-link nav-link--active' : 'nav-link'}
+              role="tab"
+              type="button"
+              onClick={() => {
+                setMode('single')
+                resetFeedback()
+                clearPreview()
+              }}
+            >
+              <Plus size={16} />
+              Single
+            </button>
+            <button
+              aria-selected={mode === 'bulk'}
+              className={mode === 'bulk' ? 'nav-link nav-link--active' : 'nav-link'}
+              role="tab"
+              type="button"
+              onClick={() => {
+                setMode('bulk')
+                resetFeedback()
+                clearPreview()
+              }}
+            >
+              <ClipboardPaste size={16} />
+              Paste many
+            </button>
+          </div>
+
+          <label className="field quick-add-toolbar__type">
+            <span>Type</span>
+            <select
+              value={type}
+              onChange={(event) => {
+                setType(event.target.value as QuickAddCardType)
+                resetFeedback()
+                clearPreview()
+              }}
+            >
+              <option value="basic">Basic</option>
+              <option value="term">Term / Definition</option>
+              <option value="multiple_choice">Multiple Choice</option>
+              <option value="explanation">Explanation</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="quick-add-meta">
+          <span className="muted-label">{meta.description}</span>
+          <small>{meta.help}</small>
+        </div>
+
+        <label className="field">
+          <span>{mode === 'single' ? meta.inputLabel : 'Paste cards to preview before saving'}</span>
+          <textarea
+            ref={inputRef}
+            rows={mode === 'single' ? 3 : 8}
+            placeholder={mode === 'single' ? meta.placeholder : getBulkPlaceholder(type)}
+            value={currentValue}
             onChange={(event) => {
-              setType(event.target.value as QuickAddCardType)
-              resetFeedback()
-              clearPreview()
+              updateValue(event.target.value)
+              if (restoredDraft) {
+                setRestoredDraft(false)
+              }
             }}
-          >
-            <option value="basic">Basic</option>
-            <option value="term">Term / Definition</option>
-            <option value="multiple_choice">Multiple Choice</option>
-            <option value="explanation">Explanation</option>
-          </select>
+            onKeyDown={handleKeyDown}
+          />
         </label>
-      </div>
 
-      <div className="quick-add-meta">
-        <span className="muted-label">{meta.description}</span>
-        <small>{meta.help}</small>
-      </div>
+        <small className="hint-text">
+          {mode === 'single'
+            ? 'Press Enter to save quickly. Use Shift+Enter for a newline. Cmd/Ctrl+Enter also works in the full editor.'
+            : 'Preview first, then save valid rows only. Cmd/Ctrl+Enter previews or confirms the current paste.'}
+        </small>
 
-      <label className="field">
-        <span>{mode === 'single' ? meta.inputLabel : 'Paste cards to preview before saving'}</span>
-        <textarea
-          ref={inputRef}
-          rows={mode === 'single' ? 3 : 8}
-          placeholder={mode === 'single' ? meta.placeholder : `${meta.example}\n${meta.example}`}
-          value={currentValue}
-          onChange={(event) => {
-            updateValue(event.target.value)
-            if (restoredDraft) {
-              setRestoredDraft(false)
-            }
-          }}
-          onKeyDown={handleKeyDown}
-        />
-      </label>
+        {restoredDraft && !error && !success && (
+          <p className="hint-text">Restored your unsaved quick-entry draft on this device.</p>
+        )}
 
-      <small className="hint-text">
-        {mode === 'single'
-          ? 'Press Enter to save quickly. Use Shift+Enter for a newline. Cmd/Ctrl+Enter also works in the full editor.'
-          : 'Preview first, then save valid rows only. Cmd/Ctrl+Enter previews or confirms the current paste.'}
-      </small>
+        {error && <p className="error-text">{error}</p>}
+        {success && <p className="hint-text">{success}</p>}
 
-      {restoredDraft && !error && !success && (
-        <p className="hint-text">Restored your unsaved quick-entry draft on this device.</p>
-      )}
-
-      {error && <p className="error-text">{error}</p>}
-      {success && <p className="hint-text">{success}</p>}
-
-      {preview && (
-        <div className="quick-add-preview">
-          <div className="panel-heading">
-            <strong>Preview</strong>
-            <small>{preview.drafts.length} ready</small>
-          </div>
-
-          <div className="list-stack list-stack--scroll">
-            {preview.drafts.map((item, index) => {
-              const summary = summarizeQuickAddDraft(item.draft)
-              return (
-                <div key={`${item.sourceLabel}-${index}`} className="activity-item quick-add-preview__item">
-                  <div className="quick-add-preview__meta">
-                    <strong>{item.sourceLabel}</strong>
-                    <small>{item.draft.type.replace('_', ' ')}</small>
-                  </div>
-                  <strong>{summary.heading}</strong>
-                  <small>{summary.detail || 'No answer yet.'}</small>
-                </div>
-              )
-            })}
-          </div>
-
-          {preview.invalidLines.length > 0 && (
-            <div className="quick-add-feedback">
-              <strong>Needs attention</strong>
-              <div className="list-stack">
-                {preview.invalidLines.map((item) => (
-                  <div key={`${item.label ?? item.lineNumber}:${item.content}`} className="activity-item">
-                    <strong>{item.label ?? `Line ${item.lineNumber}`}</strong>
-                    <small>{item.reason}</small>
-                  </div>
-                ))}
-              </div>
+        {preview && (
+          <div className="quick-add-preview">
+            <div className="panel-heading">
+              <strong>Preview</strong>
+              <small>{preview.drafts.length} ready</small>
             </div>
-          )}
-        </div>
-      )}
 
-      <div className="modal-actions quick-add-actions">
-        <div className="quick-add-actions__main">
-          {mode === 'single' ? (
-            <>
-              <button
-                className="primary-button"
-                disabled={disabled || saving || !singleValue.trim()}
-                type="button"
-                onClick={() => {
-                  void saveSingle()
-                }}
-              >
-                {saving ? 'Saving...' : 'Add card'}
-              </button>
-              <button
-                className="ghost-button"
-                disabled={!canExpand || saving}
-                type="button"
-                onClick={handleExpand}
-              >
-                <Expand size={16} />
-                Expand
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                className="ghost-button"
-                disabled={disabled || saving || !bulkValue.trim()}
-                type="button"
-                onClick={buildPreview}
-              >
-                {preview ? 'Refresh preview' : 'Preview cards'}
-              </button>
-              <button
-                className="primary-button"
-                disabled={disabled || saving || !(preview?.drafts.length ?? 0)}
-                type="button"
-                onClick={() => {
-                  void saveBulk()
-                }}
-              >
-                {saving
-                  ? 'Saving...'
-                  : `Save ${preview?.drafts.length ?? 0} card${preview?.drafts.length === 1 ? '' : 's'}`}
-              </button>
-            </>
-          )}
+            <div className="list-stack list-stack--scroll">
+              {preview.drafts.map((item, index) => {
+                const summary = summarizeQuickAddDraft(item.draft)
+                return (
+                  <div key={`${item.sourceLabel}-${index}`} className="activity-item quick-add-preview__item">
+                    <div className="quick-add-preview__meta">
+                      <strong>{item.sourceLabel}</strong>
+                      <small>{item.draft.type.replace('_', ' ')}</small>
+                    </div>
+                    <strong>{summary.heading}</strong>
+                    <small>{summary.detail || 'No answer yet.'}</small>
+                  </div>
+                )
+              })}
+            </div>
+
+            {preview.invalidLines.length > 0 && (
+              <div className="quick-add-feedback">
+                <strong>Needs attention</strong>
+                <div className="list-stack">
+                  {preview.invalidLines.map((item) => (
+                    <div key={`${item.label ?? item.lineNumber}:${item.content}`} className="activity-item">
+                      <strong>{item.label ?? `Line ${item.lineNumber}`}</strong>
+                      <small>{item.reason}</small>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="modal-actions quick-add-actions">
+          <div className="quick-add-actions__main">
+            {mode === 'single' ? (
+              <>
+                <button
+                  className="primary-button"
+                  disabled={disabled || saving || !singleValue.trim()}
+                  type="button"
+                  onClick={() => {
+                    void saveSingle()
+                  }}
+                >
+                  {saving ? 'Saving...' : 'Add card'}
+                </button>
+                <button
+                  className="ghost-button"
+                  disabled={!canExpand || saving}
+                  type="button"
+                  onClick={handleExpand}
+                >
+                  <Expand size={16} />
+                  Expand
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="ghost-button"
+                  disabled={disabled || saving || !bulkValue.trim()}
+                  type="button"
+                  onClick={buildPreview}
+                >
+                  {preview ? 'Refresh preview' : 'Preview cards'}
+                </button>
+                <button
+                  className="primary-button"
+                  disabled={disabled || saving || !(preview?.drafts.length ?? 0)}
+                  type="button"
+                  onClick={() => {
+                    void saveBulk()
+                  }}
+                >
+                  {saving
+                    ? 'Saving...'
+                    : `Save ${preview?.drafts.length ?? 0} card${preview?.drafts.length === 1 ? '' : 's'}`}
+                </button>
+              </>
+            )}
+          </div>
+          {footerAction && <div className="quick-add-actions__aside">{footerAction}</div>}
         </div>
-        {footerAction && <div className="quick-add-actions__aside">{footerAction}</div>}
-      </div>
-    </section>
+      </section>
+
+      {duplicateQuestion && (
+        <Modal title="Question already exists" onClose={() => setDuplicateQuestion(null)} width="sm">
+          <div className="stack-form">
+            <p>
+              A card with this question already exists in the current deck.
+            </p>
+            <div className="preview-card">
+              <strong>{duplicateQuestion}</strong>
+            </div>
+            <div className="modal-actions">
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => {
+                  setDuplicateQuestion(null)
+                  inputRef.current?.focus()
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
   )
 }
