@@ -819,6 +819,37 @@ small,
   gap: 0.55rem;
 }
 
+.deck-form {
+  gap: 1rem;
+}
+
+.form-section {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.95rem 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.form-section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.form-section__heading {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.form-section__heading strong {
+  font-size: 1rem;
+  color: var(--ink-strong);
+}
+
+.form-section__heading p {
+  color: var(--ink-muted);
+  font-size: 0.95rem;
+}
+
 .field span,
 .inline-field span {
   font-size: 0.85rem;
@@ -912,6 +943,10 @@ textarea:focus {
   width: auto;
   min-height: 0;
   margin: 0;
+}
+
+.checkbox-row--deck {
+  gap: 0.7rem;
 }
 
 .deck-card {
@@ -1314,7 +1349,7 @@ textarea:focus {
 
 .modal-header,
 .modal-content {
-  padding: 1rem 1.15rem;
+  padding: 1.15rem 1.25rem;
 }
 
 .modal-header {
@@ -1327,6 +1362,48 @@ textarea:focus {
 
 .modal-header h2 {
   font-size: clamp(1.5rem, 4vw, 2rem);
+}
+
+.modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(31, 39, 64, 0.12);
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--ink);
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease;
+}
+
+.modal-close:hover {
+  transform: translateY(-1px);
+  border-color: rgba(31, 39, 64, 0.2);
+  box-shadow: var(--shadow-sm);
+}
+
+.modal-content {
+  display: grid;
+  gap: 1rem;
+}
+
+.modal-actions--deck {
+  margin-top: 0.1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--line-soft);
+}
+
+.modal-actions--deck-form {
+  align-items: center;
+}
+
+.modal-actions__close {
+  margin-left: auto;
 }
 
 @media (min-width: 40rem) {

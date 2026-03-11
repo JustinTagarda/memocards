@@ -1,5 +1,6 @@
 'use client'
 
+import { X } from 'lucide-react'
 import { useEffect, type PropsWithChildren } from 'react'
 
 interface ModalProps extends PropsWithChildren {
@@ -27,11 +28,11 @@ export function Modal({ children, title, onClose, width = 'md' }: ModalProps) {
         onClick={(event) => {
           event.stopPropagation()
         }}
-      >
+        >
         <div className="modal-header">
           <h2>{title}</h2>
-          <button aria-label="Close dialog" className="ghost-button" type="button" onClick={onClose}>
-            Close
+          <button aria-label="Close dialog" className="modal-close" type="button" onClick={onClose}>
+            <X size={18} />
           </button>
         </div>
         <div className="modal-content">{children}</div>

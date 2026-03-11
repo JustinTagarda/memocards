@@ -71,149 +71,163 @@ export function DeckForm({ initialValue, folders, onCancel, onSubmit }: DeckForm
   }
 
   return (
-    <form className="stack-form" onSubmit={handleSubmit}>
-      <label className="field">
-        <span>Deck title</span>
-        <input
-          required
-          maxLength={80}
-          value={draft.title}
-          onChange={(event) => {
-            setDraft((current) => ({ ...current, title: event.target.value }))
-          }}
-        />
-      </label>
-
-      <label className="field">
-        <span>Description</span>
-        <textarea
-          rows={4}
-          value={draft.description}
-          onChange={(event) => {
-            setDraft((current) => ({ ...current, description: event.target.value }))
-          }}
-        />
-      </label>
-
-      <div className="field-grid">
-        <label className="field">
-          <span>Folder</span>
-          <select
-            value={draft.folderId ?? ''}
-            onChange={(event) => {
-              setDraft((current) => ({
-                ...current,
-                folderId: event.target.value || null,
-              }))
-            }}
-          >
-            <option value="">No folder</option>
-            {folders.map((folder) => (
-              <option key={folder.id} value={folder.id}>
-                {folder.name}
-              </option>
-            ))}
-          </select>
-        </label>
+    <form className="stack-form deck-form" onSubmit={handleSubmit}>
+      <section className="form-section">
+        <div className="form-section__heading">
+          <strong>Basics</strong>
+          <p>Name your deck and add a short note so it is easy to spot later.</p>
+        </div>
 
         <label className="field">
-          <span>Start mode</span>
-          <select
-            value={draft.preferences.defaultMode}
-            onChange={(event) => {
-              setDraft((current) => ({
-                ...current,
-                preferences: {
-                  ...current.preferences,
-                  defaultMode: event.target.value as DeckDraft['preferences']['defaultMode'],
-                },
-              }))
-            }}
-          >
-            <option value="review">Review due cards</option>
-            <option value="learn">Learn all cards</option>
-            <option value="cram">Cram mode</option>
-          </select>
-        </label>
-      </div>
-
-      <div className="field-grid">
-        <label className="field">
-          <span>Tags</span>
+          <span>Deck title</span>
           <input
-            placeholder="biology, exam 1"
-            value={draft.tags.join(', ')}
+            required
+            maxLength={80}
+            value={draft.title}
             onChange={(event) => {
-              setDraft((current) => ({
-                ...current,
-                tags: parseTags(event.target.value),
-              }))
+              setDraft((current) => ({ ...current, title: event.target.value }))
             }}
           />
         </label>
 
         <label className="field">
-          <span>Cards per day</span>
-          <input
-            min={5}
-            max={100}
-            type="number"
-            value={draft.preferences.dailyGoal}
+          <span>Description</span>
+          <textarea
+            rows={4}
+            value={draft.description}
             onChange={(event) => {
-              setDraft((current) => ({
-                ...current,
-                preferences: {
-                  ...current.preferences,
-                  dailyGoal: Number(event.target.value),
-                },
-              }))
+              setDraft((current) => ({ ...current, description: event.target.value }))
             }}
           />
         </label>
-      </div>
+      </section>
 
-      <div className="checkbox-row">
-        <label>
-          <input
-            checked={draft.preferences.shuffleByDefault}
-            type="checkbox"
-            onChange={(event) => {
-              setDraft((current) => ({
-                ...current,
-                preferences: {
-                  ...current.preferences,
-                  shuffleByDefault: event.target.checked,
-                },
-              }))
-            }}
-          />
-          Shuffle cards
-        </label>
+      <section className="form-section">
+        <div className="form-section__heading">
+          <strong>Study setup</strong>
+          <p>Choose where this deck lives and how you want it to start.</p>
+        </div>
 
-        <label>
-          <input
-            checked={draft.preferences.autoPlayAudio}
-            type="checkbox"
-            onChange={(event) => {
-              setDraft((current) => ({
-                ...current,
-                preferences: {
-                  ...current.preferences,
-                  autoPlayAudio: event.target.checked,
-                },
-              }))
-            }}
-          />
-          Play audio automatically
-        </label>
-      </div>
+        <div className="field-grid">
+          <label className="field">
+            <span>Folder</span>
+            <select
+              value={draft.folderId ?? ''}
+              onChange={(event) => {
+                setDraft((current) => ({
+                  ...current,
+                  folderId: event.target.value || null,
+                }))
+              }}
+            >
+              <option value="">No folder</option>
+              {folders.map((folder) => (
+                <option key={folder.id} value={folder.id}>
+                  {folder.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
-      <div className="modal-actions">
-        <button className="ghost-button" type="button" onClick={onCancel}>
-          Cancel
-        </button>
+          <label className="field">
+            <span>Start mode</span>
+            <select
+              value={draft.preferences.defaultMode}
+              onChange={(event) => {
+                setDraft((current) => ({
+                  ...current,
+                  preferences: {
+                    ...current.preferences,
+                    defaultMode: event.target.value as DeckDraft['preferences']['defaultMode'],
+                  },
+                }))
+              }}
+            >
+              <option value="review">Review due cards</option>
+              <option value="learn">Learn all cards</option>
+              <option value="cram">Cram mode</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="field-grid">
+          <label className="field">
+            <span>Tags</span>
+            <input
+              placeholder="biology, exam 1"
+              value={draft.tags.join(', ')}
+              onChange={(event) => {
+                setDraft((current) => ({
+                  ...current,
+                  tags: parseTags(event.target.value),
+                }))
+              }}
+            />
+          </label>
+
+          <label className="field">
+            <span>Cards per day</span>
+            <input
+              min={5}
+              max={100}
+              type="number"
+              value={draft.preferences.dailyGoal}
+              onChange={(event) => {
+                setDraft((current) => ({
+                  ...current,
+                  preferences: {
+                    ...current.preferences,
+                    dailyGoal: Number(event.target.value),
+                  },
+                }))
+              }}
+            />
+          </label>
+        </div>
+
+        <div className="checkbox-row checkbox-row--deck">
+          <label>
+            <input
+              checked={draft.preferences.shuffleByDefault}
+              type="checkbox"
+              onChange={(event) => {
+                setDraft((current) => ({
+                  ...current,
+                  preferences: {
+                    ...current.preferences,
+                    shuffleByDefault: event.target.checked,
+                  },
+                }))
+              }}
+            />
+            Shuffle cards
+          </label>
+
+          <label>
+            <input
+              checked={draft.preferences.autoPlayAudio}
+              type="checkbox"
+              onChange={(event) => {
+                setDraft((current) => ({
+                  ...current,
+                  preferences: {
+                    ...current.preferences,
+                    autoPlayAudio: event.target.checked,
+                  },
+                }))
+              }}
+            />
+            Play audio automatically
+          </label>
+        </div>
+      </section>
+
+      <div className="modal-actions modal-actions--deck modal-actions--deck-form">
         <button className="primary-button" disabled={saving || !draft.title.trim()} type="submit">
           {saving ? 'Saving...' : 'Save deck'}
+        </button>
+        <button className="ghost-button modal-actions__close" type="button" onClick={onCancel}>
+          Close
         </button>
       </div>
     </form>
