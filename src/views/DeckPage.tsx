@@ -1,7 +1,8 @@
 'use client'
 
-import { ArrowLeft, Plus, Search, Star, Trash2 } from 'lucide-react'
+import { ArrowLeft, Plus, Search, Star, Trash2, Upload } from 'lucide-react'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import type { Route } from 'next'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { Modal } from '../components/Modal'
@@ -145,6 +146,10 @@ export function DeckPage() {
             <button className="primary-button" type="button" onClick={() => router.push(`/app/decks/${deck.id}/study`)}>
               Study deck
             </button>
+            <Link className="ghost-button" href={`/app/decks/${deck.id}/import` as Route}>
+              <Upload size={16} />
+              Import notes
+            </Link>
             <button className="ghost-button" type="button" onClick={() => setShowDeckModal(true)}>
               Edit deck
             </button>
