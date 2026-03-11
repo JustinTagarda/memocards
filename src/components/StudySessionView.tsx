@@ -115,6 +115,17 @@ export function StudySessionView({
   const nextCard = studyQueue[currentIndex + 1] ?? null
   const progress = studyQueue.length === 0 ? 0 : Math.min(100, (currentIndex / studyQueue.length) * 100)
   const sessionFinished = studyQueue.length > 0 && currentIndex >= studyQueue.length
+  const noCardsInDeck = cards.length === 0
+  const emptyTitle = noCardsInDeck
+    ? 'This deck has no cards yet'
+    : mode === 'review'
+      ? 'Nothing is due right now'
+      : 'No cards match these filters'
+  const emptyMessage = noCardsInDeck
+    ? 'Add a few cards in this deck, then come back when you want to study.'
+    : mode === 'review'
+      ? 'Switch to Learn or Cram if you still want to study today.'
+      : 'Try turning off favorites only or switch modes to keep going.'
   const playAudioForCard = useEffectEvent(onPlayAudio)
   const warmAudioForCard = useEffectEvent(onWarmAudio ?? (() => undefined))
 
@@ -285,17 +296,34 @@ export function StudySessionView({
 
   if (studyQueue.length === 0) {
     return (
-      <section className="study-empty">
-        <div>
+      <section className="study-empty study-empty--clear">
+        <div className="study-empty__top">
+          <div className="study-empty__intro">
           <p className="eyebrow">Study</p>
-          <h2>{mode === 'review' ? 'Nothing is due right now' : 'No cards match these filters'}</h2>
-          <p>
-            {mode === 'review'
-              ? 'Switch to Learn or Cram if you still want to study today.'
-              : 'Try turning off favorites only or add a few more cards.'}
-          </p>
+            <h2>{emptyTitle}</h2>
+            <p>{emptyMessage}</p>
+          </div>
+          {!noCardsInDeck && (
+            <div className="study-empty__actions">
+              {mode !== 'learn' && (
+                <button className="primary-button" type="button" onClick={() => setMode('learn')}>
+                  Study all cards
+                </button>
+              )}
+              {mode !== 'cram' && (
+                <button className="ghost-button" type="button" onClick={() => setMode('cram')}>
+                  Start cram mode
+                </button>
+              )}
+              {favoritesOnly && (
+                <button className="ghost-button" type="button" onClick={() => setFavoritesOnly(false)}>
+                  Show all cards
+                </button>
+              )}
+            </div>
+          )}
         </div>
-        <div className="study-toolbar">
+        <div className="study-toolbar study-toolbar--empty">
           <label className="inline-field">
             <span>Mode</span>
             <select value={mode} onChange={(event) => setMode(event.target.value as StudyMode)}>
@@ -324,12 +352,12 @@ export function StudySessionView({
   return (
     <section className="study-layout">
       <div className="study-header">
-        <div>
+        <div className="study-header__copy">
           <p className="eyebrow">Study</p>
           <h2>{deck.title}</h2>
           <p className="hint-text">{pluralize(studyQueue.length, 'card')} in this run</p>
         </div>
-        <div className="study-toolbar">
+        <div className="study-toolbar study-toolbar--active">
           <label className="inline-field">
             <span>Mode</span>
             <select value={mode} onChange={(event) => setMode(event.target.value as StudyMode)}>

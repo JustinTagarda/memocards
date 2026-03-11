@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowLeft, Plus, Search, Star, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, PencilLine, Plus, Search, Star, Trash2, Upload } from 'lucide-react'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import type { Route } from 'next'
 import Link from 'next/link'
@@ -272,18 +272,21 @@ export function DeckPage() {
           {filteredCards.map((card) => (
             <article key={card.id} className="card-row card-row--deck">
               <div className="card-row__copy">
-                <div className="inline-actions">
+                <div className="card-row__summary">
                   <span className="pill">{card.type.replace('_', ' ')}</span>
-                  {card.isFavorite && <Star size={16} className="favorite-icon" />}
+                  <h2>{getCardPrompt(card)}</h2>
                 </div>
-                <h2>{getCardPrompt(card)}</h2>
-                <p>{card.answer || card.expectedAnswer.canonical || 'No answer yet.'}</p>
-                <div className="tag-row">
-                  {card.tags.map((tag) => (
-                    <span key={tag} className="tag-pill">
-                      {tag}
-                    </span>
-                  ))}
+                <div className="card-row__answerline">
+                  <p>{card.answer || card.expectedAnswer.canonical || 'No answer yet.'}</p>
+                  {card.tags.length > 0 && (
+                    <div className="tag-row">
+                      {card.tags.map((tag) => (
+                        <span key={tag} className="tag-pill">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="card-row__meta card-row__meta--deck">
@@ -292,26 +295,41 @@ export function DeckPage() {
                   <small>{card.reviewState.mastery}% learned</small>
                   <small>{card.studyStats.totalReviews} reviews</small>
                 </div>
-                <div className="card-row__actions">
-                  <div className="card-row__actions-main">
-                    <button className="ghost-button" type="button" onClick={() => void toggleCardFavorite(user.id, deck.id, card)}>
-                      {card.isFavorite ? 'Unfavorite' : 'Favorite'}
-                    </button>
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      onClick={() => {
-                        setEditingCard(card)
-                        setQuickAddDraft(null)
-                        setShowCardModal(true)
-                      }}
-                    >
-                      Edit
-                    </button>
-                  </div>
-                  <button className="button-link button-link--danger card-row__delete" type="button" onClick={() => void deleteCard(user.id, deck.id, card.id)}>
-                    <Trash2 size={16} />
-                    Delete
+                <div className="card-row__actions card-row__actions--single">
+                  <button
+                    aria-label={card.isFavorite ? 'Unfavorite card' : 'Favorite card'}
+                    className={
+                      card.isFavorite
+                        ? 'ghost-button ghost-button--icon card-row__icon-button card-row__icon-button--active'
+                        : 'ghost-button ghost-button--icon card-row__icon-button'
+                    }
+                    title={card.isFavorite ? 'Unfavorite' : 'Favorite'}
+                    type="button"
+                    onClick={() => void toggleCardFavorite(user.id, deck.id, card)}
+                  >
+                    <Star size={15} />
+                  </button>
+                  <button
+                    aria-label="Edit card"
+                    className="ghost-button ghost-button--icon card-row__icon-button"
+                    title="Edit"
+                    type="button"
+                    onClick={() => {
+                      setEditingCard(card)
+                      setQuickAddDraft(null)
+                      setShowCardModal(true)
+                    }}
+                  >
+                    <PencilLine size={15} />
+                  </button>
+                  <button
+                    aria-label="Delete card"
+                    className="ghost-button ghost-button--icon card-row__icon-button card-row__icon-button--danger"
+                    title="Delete"
+                    type="button"
+                    onClick={() => void deleteCard(user.id, deck.id, card.id)}
+                  >
+                    <Trash2 size={15} />
                   </button>
                 </div>
               </div>
