@@ -1,6 +1,6 @@
 'use client'
 
-import { BookOpen, FolderPlus, Import, Search, Sparkles } from 'lucide-react'
+import { BookOpen, FolderPlus, Import, Search, Sparkles, Trash2 } from 'lucide-react'
 import { useMemo, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -51,8 +51,6 @@ export function DashboardPage() {
   const dueToday = profile?.summary.dueToday ?? 0
   const totalSessions = profile?.summary.totalSessions ?? 0
   const dailyGoal = profile?.settings.dailyGoal ?? 20
-  const nextFocusDeck = filteredDecks.find((deck) => deck.counts.dueCards > 0) ?? filteredDecks[0] ?? null
-
   if (!user) {
     return null
   }
@@ -134,20 +132,6 @@ export function DashboardPage() {
               <strong>{totalSessions}</strong>
             </div>
           </div>
-          {nextFocusDeck ? (
-            <div className="hero-note hero-note--action">
-              <small>Best next step</small>
-              <button
-                className="ghost-button ghost-button--inline"
-                type="button"
-                onClick={() => router.push(`/app/decks/${nextFocusDeck.id}/study`)}
-              >
-                Study {nextFocusDeck.title}
-              </button>
-            </div>
-          ) : (
-            <p className="hero-note">Create a deck or import a set to get your study space started.</p>
-          )}
         </article>
       </section>
 
@@ -292,6 +276,7 @@ export function DashboardPage() {
                         void deleteDeck(user.id, deck.id)
                       }}
                     >
+                      <Trash2 size={15} />
                       Delete
                     </button>
                   </div>

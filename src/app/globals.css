@@ -32,8 +32,8 @@
   --line-soft: rgba(31, 39, 64, 0.08);
   --success: #157347;
   --danger: #c2410c;
-  --radius-xl: 2rem;
-  --radius-lg: 1.5rem;
+  --radius-xl: 0.5rem;
+  --radius-lg: 0.75rem;
   --radius-md: 1.125rem;
   --radius-sm: 0.9rem;
 }
@@ -185,7 +185,7 @@ small,
   gap: 0.75rem;
   max-width: 76rem;
   margin: 0 auto 1rem;
-  padding: 0.95rem 1rem;
+  padding: calc(0.95rem * 0.5) 1rem;
   border-radius: var(--radius-xl);
   border: 1px solid var(--surface-border);
   background:
@@ -683,8 +683,12 @@ small,
 .deck-card,
 .card-row,
 .filters-card {
-  padding: 1.15rem;
+  padding: calc(1.15rem * 0.4);
   border-radius: var(--radius-xl);
+}
+
+.hero-panel {
+  padding: calc(1.15rem * 0.8);
 }
 
 .preview-card {
@@ -754,10 +758,11 @@ small,
 }
 
 .dashboard-hero .hero-panel__copy h1 {
-  max-width: 8.2ch;
-  font-size: clamp(1.9rem, 3.7vw, 2.9rem);
+  max-width: 100%;
+  font-size: clamp(1.71rem, 3.33vw, 2.61rem);
   font-weight: 800;
   line-height: 1.04;
+  text-wrap: balance;
 }
 
 .dashboard-hero .hero-panel__copy p {
@@ -785,14 +790,22 @@ small,
 
 .hero-panel__actions--dashboard {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: 0.55rem 0.65rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
   align-items: stretch;
 }
 
 .hero-panel__actions--dashboard > * {
-  min-height: 2.7rem;
+  min-height: 2.35rem;
   width: 100%;
+}
+
+.hero-panel__actions--dashboard .primary-button,
+.hero-panel__actions--dashboard .ghost-button {
+  gap: 0.4rem;
+  padding: 0.52rem 0.65rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 .hero-note {
@@ -831,22 +844,23 @@ small,
 }
 
 .summary-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
   border-radius: var(--radius-lg);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(249, 246, 242, 0.86));
 }
 
 .summary-grid--dashboard .summary-card {
-  display: grid;
-  gap: 0.2rem;
-  align-content: start;
-  min-height: 5.3rem;
-  padding: 0.7rem 0.85rem;
+  padding: 0.56rem 0.68rem 0.56rem 1.36rem;
 }
 
 .summary-card strong,
 .session-summary strong {
   display: block;
+  flex: 0 0 auto;
   font-size: clamp(1.5rem, 6vw, 2.2rem);
 }
 
@@ -856,6 +870,11 @@ small,
 
 .summary-card span,
 .session-summary span {
+  min-width: 0;
+  flex: 1 1 auto;
+  text-align: left;
+  line-height: 1.2;
+  white-space: normal;
   color: var(--ink-muted);
 }
 
@@ -878,8 +897,12 @@ small,
 }
 
 .filters-card--dashboard {
-  gap: 0.75rem;
-  padding: 0.95rem 1.1rem;
+  gap: 0.45rem;
+  padding: 0.76rem 0.88rem;
+}
+
+.filters-card--dashboard .section-heading {
+  gap: 0.24rem;
 }
 
 .filters-card--dashboard .section-heading h2 {
@@ -902,7 +925,12 @@ small,
 }
 
 .filters-card--dashboard .filters-grid {
-  gap: 0.75rem;
+  row-gap: 0.45rem;
+  column-gap: 0.75rem;
+}
+
+.filters-card--dashboard .field {
+  gap: 0.33rem;
 }
 
 .quick-add-card {
@@ -1165,7 +1193,7 @@ textarea:focus {
 
 .deck-card--dashboard {
   gap: 0.75rem;
-  padding: 1rem 1.05rem;
+  padding: 0.8rem 0.84rem;
 }
 
 .deck-card--dashboard .deck-card__identity {
@@ -1210,6 +1238,7 @@ textarea:focus {
 
 .deck-card__delete {
   justify-self: end;
+  gap: 0.4rem;
   margin-right: 0.2rem;
   padding: 0.35rem 0.1rem;
   font-weight: 600;
@@ -1274,13 +1303,13 @@ textarea:focus {
 
 .side-panel--compact {
   gap: 0.65rem;
-  padding: 1rem 1.05rem;
+  padding: 0.8rem 0.84rem;
 }
 
 .side-panel--deck-bottom {
   gap: 0.45rem;
   min-height: 8.75rem;
-  padding: 0.85rem 0.95rem;
+  padding: 0.68rem 0.76rem;
   align-content: start;
 }
 
@@ -1331,8 +1360,8 @@ textarea:focus {
 
 .today-stat {
   display: grid;
-  gap: 0.25rem;
-  padding: 0.85rem 0.9rem;
+  gap: 0.2rem;
+  padding: 0.51rem 0.9rem;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(31, 39, 64, 0.08);
   background: rgba(255, 255, 255, 0.5);
@@ -1425,8 +1454,7 @@ textarea:focus {
 }
 
 .summary-grid--deck .summary-card {
-  min-height: 4.8rem;
-  padding: 0.75rem 0.85rem;
+  padding: 0.75rem 0.85rem 0.75rem 1.7rem;
 }
 
 .summary-grid--deck .summary-card strong {
@@ -1534,7 +1562,7 @@ textarea:focus {
 
 .card-row--deck {
   gap: 0.4rem;
-  padding: 5px;
+  padding: 4px;
 }
 
 .card-row--deck .card-row__copy {
@@ -2160,9 +2188,21 @@ textarea:focus {
   }
 
   .dashboard-hero,
-  .dashboard-grid,
   .deck-workspace {
     grid-template-columns: minmax(0, 1.45fr) minmax(18rem, 0.95fr);
+  }
+
+  .dashboard-hero {
+    align-items: stretch;
+  }
+
+  .dashboard-hero > .hero-panel,
+  .dashboard-hero > .side-panel {
+    height: 100%;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: minmax(0, 1.45fr) minmax(18rem, 0.86fr);
   }
 
   .deck-workspace--single {
@@ -2286,7 +2326,7 @@ textarea:focus {
   }
 
   .hero-panel {
-    padding: 1.4rem;
+    padding: 1.12rem;
   }
 
   .filters-card,
@@ -2294,6 +2334,6 @@ textarea:focus {
   .card-row,
   .side-panel,
   .study-card {
-    padding: 1.35rem;
+    padding: 1.08rem;
   }
 }
