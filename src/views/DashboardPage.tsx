@@ -150,6 +150,7 @@ export function DashboardPage() {
             <div className="search-box">
               <Search size={16} />
               <input
+                aria-label="Search decks"
                 placeholder="Search decks, tags, topics"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
@@ -159,7 +160,7 @@ export function DashboardPage() {
 
           <label className="field filter-field">
             <span>Folder</span>
-            <select value={folderFilter} onChange={(event) => setFolderFilter(event.target.value)}>
+            <select aria-label="Filter decks by folder" value={folderFilter} onChange={(event) => setFolderFilter(event.target.value)}>
               <option value="all">All folders</option>
               {folders.map((folder) => (
                 <option key={folder.id} value={folder.id}>
@@ -171,7 +172,7 @@ export function DashboardPage() {
 
           <label className="field filter-field">
             <span>Tag</span>
-            <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
+            <select aria-label="Filter decks by tag" value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
               <option value="all">All tags</option>
               {tags.map((tag) => (
                 <option key={tag} value={tag}>

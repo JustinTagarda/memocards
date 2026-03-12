@@ -212,6 +212,7 @@ export function DeckPage() {
             <div className="search-box">
               <Search size={16} />
               <input
+                aria-label="Search cards"
                 placeholder="Search cards, keywords, prompts"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
@@ -221,7 +222,7 @@ export function DeckPage() {
 
           <label className="field filter-field">
             <span>Tag</span>
-            <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
+            <select aria-label="Filter cards by tag" value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
               <option value="all">All tags</option>
               {tags.map((tag) => (
                 <option key={tag} value={tag}>
