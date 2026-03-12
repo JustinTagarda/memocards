@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { SiteFooter } from '../components/SiteFooter'
 import { Providers } from './providers'
 import './globals.css'
 
@@ -16,7 +17,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          <div className="site-frame">
+            <div className="site-content">{children}</div>
+            <SiteFooter />
+          </div>
+        </Providers>
       </body>
     </html>
   )
