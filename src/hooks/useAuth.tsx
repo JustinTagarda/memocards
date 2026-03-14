@@ -9,6 +9,12 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
+import {
+  hasLocalDevBypassSession,
+  isLocalDevBypassEnabled,
+  LOCAL_DEV_BYPASS_COOKIE,
+  LOCAL_DEV_BYPASS_USER,
+} from '../lib/devBypass'
 import { env, hasSupabaseEnvironment } from '../lib/env'
 import { getSupabaseBrowserClient } from '../lib/supabase/browser'
 import { ensureUserProfile } from '../services/memocards'
@@ -33,6 +39,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (isLocalDevBypassEnabled) {
+      setUser(hasLocalDevBypassSession() ? LOCAL_DEV_BYPASS_USER : null)
+      setLoading(false)
+      return
+    }
+
     if (!hasSupabaseEnvironment) {
       setLoading(false)
       return
@@ -92,6 +104,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
     loading,
     error,
     async signIn() {
+      if (isLocalDevBypassEnabled) {
+        document.cookie = `${LOCAL_DEV_BYPASS_COOKIE}=1; Path=/; SameSite=Lax`
+        setUser(LOCAL_DEV_BYPASS_USER)
+        setLoading(false)
+        window.location.assign('/app')
+        return
+      }
+
       if (!hasSupabaseEnvironment) {
         setError('Supabase environment variables are missing.')
         return
@@ -115,6 +135,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
     },
     async signOutUser() {
+      if (isLocalDevBypassEnabled) {
+        document.cookie = `${LOCAL_DEV_BYPASS_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`
+        setUser(null)
+        setError(null)
+        window.location.assign('/')
+        return
+      }
+
       if (!hasSupabaseEnvironment) {
         window.location.assign('/')
         return

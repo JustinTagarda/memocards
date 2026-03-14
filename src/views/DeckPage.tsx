@@ -1,10 +1,11 @@
 'use client'
 
-import { ArrowLeft, PencilLine, Plus, Search, Star, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, BookOpen, PencilLine, Plus, Search, Star, Trash2, Upload } from 'lucide-react'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import type { Route } from 'next'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Modal } from '../components/Modal'
 import { QuickAddComposer } from '../components/QuickAddComposer'
 import { CardForm, DeckForm, ExportMenu } from '../components/forms'
@@ -45,6 +46,8 @@ export function DeckPage() {
   const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [showDeckModal, setShowDeckModal] = useState(false)
   const [showCardModal, setShowCardModal] = useState(false)
+  const [showDeleteDeckDialog, setShowDeleteDeckDialog] = useState(false)
+  const [cardToDelete, setCardToDelete] = useState<Card | null>(null)
   const [editingCard, setEditingCard] = useState<Card | null>(null)
   const [quickAddDraft, setQuickAddDraft] = useState<CardDraft | null>(null)
   const [entryMemory, setEntryMemory] = useState(() => (deckId ? loadDeckEntryMemory(deckId) : createEmptyEntryMemory()))
@@ -97,6 +100,7 @@ export function DeckPage() {
   const entryDefaults = deck.preferences.entryDefaults
   const createCardFallback = buildCreateCardDraft(entryDefaults, entryMemory)
   const quickAddPreferredType = entryMemory.lastCardType ?? entryDefaults.cardType
+  const showQuickAdd = false
 
   function rememberCreatedDraft(draft: CardDraft) {
     saveDeckEntryMemory(activeDeck.id, draft)
@@ -125,9 +129,11 @@ export function DeckPage() {
 
       <section className="deck-detail-hero deck-detail-hero--focus">
         <div className="deck-detail-hero__content">
-          <span className="folder-chip" style={{ '--folder-color': folder?.color ?? '#f26a2e' } as CSSProperties}>
-            {folder?.name ?? 'Private deck'}
-          </span>
+          {folder ? (
+            <span className="folder-chip" style={{ '--folder-color': folder.color } as CSSProperties}>
+              {folder.name}
+            </span>
+          ) : null}
           <h1>{deck.title}</h1>
           <p>{deck.description || 'Add cards, keep things tidy, and jump into study whenever you are ready.'}</p>
           <div className="tag-row">
@@ -145,24 +151,40 @@ export function DeckPage() {
         <div className="deck-detail-hero__actions">
           <div className="deck-detail-hero__actions-grid">
             <button className="primary-button" type="button" onClick={() => router.push(`/app/decks/${deck.id}/study`)}>
+              <BookOpen size={16} />
               Study deck
             </button>
             <button className="ghost-button" type="button" onClick={() => setShowDeckModal(true)}>
+              <PencilLine size={16} />
               Edit deck
             </button>
-            <ExportMenu deck={deck} cards={cards} />
-          </div>
-          <div className="deck-detail-hero__actions-delete">
             <button
-              className="button-link button-link--danger deck-detail-hero__delete"
+              className="ghost-button deck-detail-hero__delete"
               type="button"
               onClick={() => {
-                void deleteDeck(user.id, deck.id).then(() => router.push('/app'))
+                setShowDeleteDeckDialog(true)
               }}
             >
               <Trash2 size={16} />
-              Delete
+              Delete deck
             </button>
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => {
+                setEditingCard(null)
+                setQuickAddDraft(null)
+                setShowCardModal(true)
+              }}
+            >
+              <Plus size={16} />
+              Add card
+            </button>
+            <Link className="ghost-button" href={`/app/decks/${deck.id}/import` as Route}>
+              <Upload size={16} />
+              Import notes
+            </Link>
+            <ExportMenu deck={deck} cards={cards} />
           </div>
         </div>
       </section>
@@ -192,18 +214,6 @@ export function DeckPage() {
             <p className="eyebrow">Find a card</p>
             <h2>Search this deck</h2>
           </div>
-          <button
-            className="primary-button"
-            type="button"
-            onClick={() => {
-              setEditingCard(null)
-              setQuickAddDraft(null)
-              setShowCardModal(true)
-            }}
-          >
-            <Plus size={16} />
-            Add card
-          </button>
         </div>
 
         <div className="filters-grid">
@@ -239,16 +249,10 @@ export function DeckPage() {
         </div>
       </section>
 
-      {profile && (
+      {showQuickAdd && profile && (
         <QuickAddComposer
           deckId={deck.id}
           existingQuestions={existingQuestions}
-          footerAction={
-            <Link className="ghost-button" href={`/app/decks/${deck.id}/import` as Route}>
-              <Upload size={16} />
-              Import notes
-            </Link>
-          }
           preferredType={quickAddPreferredType}
           onExpand={(draft) => {
             setEditingCard(null)
@@ -328,7 +332,7 @@ export function DeckPage() {
                     className="ghost-button ghost-button--icon card-row__icon-button card-row__icon-button--danger"
                     title="Delete"
                     type="button"
-                    onClick={() => void deleteCard(user.id, deck.id, card.id)}
+                    onClick={() => setCardToDelete(card)}
                   >
                     <Trash2 size={15} />
                   </button>
@@ -444,6 +448,36 @@ export function DeckPage() {
             }
           />
         </Modal>
+      )}
+
+      {showDeleteDeckDialog && (
+        <ConfirmDialog
+          title={`Delete ${deck.title}?`}
+          description={`Delete this deck and remove all ${deck.counts.totalCards} card${deck.counts.totalCards === 1 ? '' : 's'} from it.`}
+          note="This also removes study progress for this deck and cannot be undone."
+          confirmLabel="Delete deck"
+          onCancel={() => setShowDeleteDeckDialog(false)}
+          onConfirm={async () => {
+            setShowDeleteDeckDialog(false)
+            await deleteDeck(user.id, deck.id)
+            router.push('/app')
+          }}
+        />
+      )}
+
+      {cardToDelete && (
+        <ConfirmDialog
+          title="Delete this card?"
+          description={`Remove "${getCardPrompt(cardToDelete)}" from ${deck.title}.`}
+          note="This card's study progress will be lost and cannot be undone."
+          confirmLabel="Delete card"
+          onCancel={() => setCardToDelete(null)}
+          onConfirm={async () => {
+            const targetCard = cardToDelete
+            setCardToDelete(null)
+            await deleteCard(user.id, deck.id, targetCard.id)
+          }}
+        />
       )}
     </div>
   )

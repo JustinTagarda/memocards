@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { isLocalDevBypassEnabled } from '../lib/devBypass'
 import { isEmbeddedBrowser } from '../lib/embeddedBrowser'
 import { hasSupabaseEnvironment } from '../lib/env'
 import { useAuth } from '../hooks/useAuth'
@@ -80,17 +81,23 @@ export function LandingPage() {
             Create personalized decks and review them anytime on any device.
           </p>
 
-          {!hasSupabaseEnvironment && (
+          {!hasSupabaseEnvironment && !isLocalDevBypassEnabled && (
             <div className="warning-banner">
               Some setup details are missing. Add them from `.env.example` before using connected
               services.
             </div>
           )}
 
-          {embeddedBrowser && (
+          {embeddedBrowser && !isLocalDevBypassEnabled && (
             <div className="warning-banner">
               Google sign-in is blocked inside in-app browsers like Messenger. Open MemoCards in
               Safari or Chrome first, then sign in there.
+            </div>
+          )}
+
+          {isLocalDevBypassEnabled && (
+            <div className="warning-banner">
+              Local dev bypass is enabled. This session uses sample data instead of Google sign-in.
             </div>
           )}
 
@@ -99,22 +106,24 @@ export function LandingPage() {
           <div className="hero-actions">
             <button
               className="primary-button primary-button--google"
-              disabled={loading || !hasSupabaseEnvironment || embeddedBrowser}
+              disabled={loading || (!hasSupabaseEnvironment && !isLocalDevBypassEnabled) || (embeddedBrowser && !isLocalDevBypassEnabled)}
               type="button"
               onClick={() => void signIn()}
             >
-              {!embeddedBrowser && (
+              {!embeddedBrowser && !isLocalDevBypassEnabled && (
                 <span className="google-mark-badge">
                   <GoogleMark />
                 </span>
               )}
-              {embeddedBrowser
+              {isLocalDevBypassEnabled
+                ? 'Continue locally'
+                : embeddedBrowser
                 ? 'Open in Safari or Chrome'
                 : loading
                   ? 'Getting ready...'
                   : 'Continue with Google'}
             </button>
-            {embeddedBrowser && (
+            {embeddedBrowser && !isLocalDevBypassEnabled && (
               <button className="ghost-button" type="button" onClick={() => void copySiteLink()}>
                 {copiedLink ? 'Link copied' : 'Copy site link'}
               </button>

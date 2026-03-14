@@ -1,13 +1,14 @@
 'use client'
 
-import { BookOpen, FolderPlus, Import, Search, Sparkles, Trash2 } from 'lucide-react'
+import { BookOpen, FolderOpen, FolderPlus, History, Import, PencilLine, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
 import { useMemo, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Modal } from '../components/Modal'
 import { DeckForm, FolderForm, ImportDialog } from '../components/forms'
 import { useAuth } from '../hooks/useAuth'
-import { useDecks, useFolders, useRecentActivity, useRecentSessions, useUserProfile } from '../hooks/useMemoCards'
+import { useDecks, useFolders, useUserProfile } from '../hooks/useMemoCards'
 import { formatCalendarDate, formatSmartDate } from '../lib/utils'
 import { createFolder, deleteDeck, importDeckBundle, saveDeck } from '../services/memocards'
 import type { Deck } from '../types/models'
@@ -18,13 +19,12 @@ export function DashboardPage() {
   const { data: profile, loading: profileLoading } = useUserProfile(user?.id)
   const { data: folders } = useFolders(user?.id)
   const { data: decks, loading: decksLoading } = useDecks(user?.id)
-  const { data: activity } = useRecentActivity(user?.id)
-  const { data: sessions } = useRecentSessions(user?.id)
 
   const [search, setSearch] = useState('')
   const [folderFilter, setFolderFilter] = useState('all')
   const [tagFilter, setTagFilter] = useState('all')
   const [editingDeck, setEditingDeck] = useState<Deck | null>(null)
+  const [deckToDelete, setDeckToDelete] = useState<Deck | null>(null)
   const [showDeckModal, setShowDeckModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
   const [showFolderModal, setShowFolderModal] = useState(false)
@@ -51,8 +51,14 @@ export function DashboardPage() {
   const dueToday = profile?.summary.dueToday ?? 0
   const totalSessions = profile?.summary.totalSessions ?? 0
   const dailyGoal = profile?.settings.dailyGoal ?? 20
+  const lastStudyDate = profile?.summary.lastStudyDate
   if (!user) {
     return null
+  }
+
+  function openCreateDeckModal() {
+    setEditingDeck(null)
+    setShowDeckModal(true)
   }
 
   return (
@@ -74,10 +80,7 @@ export function DashboardPage() {
               <button
                 className="primary-button"
                 type="button"
-                onClick={() => {
-                  setEditingDeck(null)
-                  setShowDeckModal(true)
-                }}
+                onClick={openCreateDeckModal}
               >
                 <BookOpen size={16} />
                 New deck
@@ -132,14 +135,25 @@ export function DashboardPage() {
               <strong>{totalSessions}</strong>
             </div>
           </div>
+          <div className="today-pace">
+            <div className="today-pace__row">
+              <div className="today-pace__meta">
+                <small>Last study</small>
+                <p>{lastStudyDate ? formatCalendarDate(lastStudyDate) : 'No study session logged yet.'}</p>
+              </div>
+              <Link className="ghost-button ghost-button--inline today-pace__link" href="/app/activity">
+                <History size={16} />
+                Activity
+              </Link>
+            </div>
+          </div>
         </article>
       </section>
 
       <section className="filters-card filters-card--dashboard">
         <div className="section-heading section-heading--toolbar">
           <div>
-            <p className="eyebrow">Find a deck</p>
-            <h2>Search and filter</h2>
+            <p className="eyebrow">Search and filter</p>
           </div>
           <small>{filteredDecks.length} showing</small>
         </div>
@@ -184,45 +198,56 @@ export function DashboardPage() {
         </div>
       </section>
 
-      <section className="dashboard-grid">
-        <div className="deck-grid deck-grid--dashboard">
-          <div className="section-heading section-heading--toolbar">
-            <div>
-              <p className="eyebrow">Your decks</p>
+      <section className="deck-grid deck-grid--dashboard">
+        <div className="section-heading section-heading--toolbar">
+          <div>
+            <p className="eyebrow">Your decks</p>
+            <div className="section-heading__title-row">
               <h2>Study sets</h2>
+              <button
+                aria-label="Create deck"
+                className="ghost-button ghost-button--icon section-heading__action"
+                type="button"
+                onClick={openCreateDeckModal}
+              >
+                <Plus size={16} />
+              </button>
             </div>
-            <small>{profile?.summary.totalDecks ?? 0} total</small>
           </div>
+          <small>{profile?.summary.totalDecks ?? 0} total</small>
+        </div>
 
-          {isLoading && <article className="empty-panel">Loading your decks...</article>}
-          {!isLoading && filteredDecks.length === 0 && (
-            <article className="empty-panel">
-              <strong>No decks yet</strong>
-              <p>Create a deck or import one to start studying here.</p>
-            </article>
-          )}
+        {isLoading && <article className="empty-panel">Loading your decks...</article>}
+        {!isLoading && filteredDecks.length === 0 && (
+          <article className="empty-panel">
+            <strong>No decks yet</strong>
+            <p>Create a deck or import one to start studying here.</p>
+          </article>
+        )}
 
-          {filteredDecks.map((deck) => {
-            const folder = folders.find((item) => item.id === deck.folderId)
-            const mastery = deck.counts.totalCards === 0
-              ? 0
-              : Math.round((deck.counts.masteredCards / deck.counts.totalCards) * 100)
+        {filteredDecks.map((deck) => {
+          const folder = folders.find((item) => item.id === deck.folderId)
+          const mastery = deck.counts.totalCards === 0
+            ? 0
+            : Math.round((deck.counts.masteredCards / deck.counts.totalCards) * 100)
 
-            return (
-              <article key={deck.id} className="deck-card deck-card--dashboard">
-                <div className="deck-card__header">
-                  <div className="deck-card__identity">
-                    <span className="folder-chip" style={{ '--folder-color': folder?.color ?? '#f26a2e' } as CSSProperties}>
-                      {folder?.name ?? 'Private deck'}
+          return (
+            <article key={deck.id} className="deck-card deck-card--dashboard">
+              <div className="deck-card__header">
+                <div className="deck-card__identity">
+                  {folder ? (
+                    <span className="folder-chip" style={{ '--folder-color': folder.color } as CSSProperties}>
+                      {folder.name}
                     </span>
-                    <h2>{deck.title}</h2>
-                    <p>{deck.description || 'Add a short note so this deck is easier to spot later.'}</p>
-                  </div>
-                  <div className="deck-card__status">
-                    <span className="muted-label">{deck.counts.dueCards} due</span>
-                    <small>Updated {formatSmartDate(deck.updatedAt)}</small>
-                  </div>
+                  ) : null}
+                  <h2>{deck.title}</h2>
+                  <p>{deck.description || 'Add a short note so this deck is easier to spot later.'}</p>
                 </div>
+                <div className="deck-card__status">
+                  <span className="muted-label">{deck.counts.dueCards} due</span>
+                  <small>Updated {formatSmartDate(deck.updatedAt)}</small>
+                </div>
+              </div>
 
                 <div className="deck-card__progress">
                   <div aria-hidden="true" className="progress-track">
@@ -232,33 +257,34 @@ export function DashboardPage() {
                     <span>{deck.counts.totalCards} cards</span>
                     <span>{mastery}% learned</span>
                     <span>{deck.counts.favorites} favorites</span>
+                    {deck.tags.length === 0 ? <span className="muted-label metrics-row__status">No tags yet</span> : null}
                   </div>
                 </div>
 
                 <div className="deck-card__footer deck-card__footer--dashboard">
-                  <div className="tag-row">
-                    {deck.tags.length > 0 ? (
-                      deck.tags.map((tag) => (
+                  {deck.tags.length > 0 ? (
+                    <div className="tag-row">
+                      {deck.tags.map((tag) => (
                         <span key={tag} className="tag-pill">
                           {tag}
                         </span>
-                      ))
-                    ) : (
-                      <span className="muted-label">No tags yet</span>
-                    )}
-                  </div>
+                      ))}
+                    </div>
+                  ) : null}
                   <div className="deck-card__actions">
                     <div className="deck-card__actions-main">
-                      <Link className="ghost-button" href={`/app/decks/${deck.id}`}>
-                        Open
-                      </Link>
                       <button
                         className="primary-button primary-button--compact"
                         type="button"
                         onClick={() => router.push(`/app/decks/${deck.id}/study`)}
                       >
+                        <BookOpen size={15} />
                         Study
                       </button>
+                      <Link className="ghost-button" href={`/app/decks/${deck.id}`}>
+                        <FolderOpen size={15} />
+                        Open
+                      </Link>
                       <button
                         className="ghost-button"
                         type="button"
@@ -267,68 +293,36 @@ export function DashboardPage() {
                           setShowDeckModal(true)
                         }}
                       >
+                        <PencilLine size={15} />
                         Edit
                       </button>
+                      <button
+                        className="ghost-button deck-card__delete"
+                        type="button"
+                        onClick={() => {
+                          setDeckToDelete(deck)
+                        }}
+                      >
+                        <Trash2 size={15} />
+                        Delete
+                      </button>
                     </div>
-                    <button
-                      className="button-link button-link--danger deck-card__delete"
-                      type="button"
-                      onClick={() => {
-                        void deleteDeck(user.id, deck.id)
-                      }}
-                    >
-                      <Trash2 size={15} />
-                      Delete
-                    </button>
                   </div>
-                </div>
-              </article>
-            )
-          })}
+              </div>
+            </article>
+          )
+        })}
+
+        <div className="deck-grid__footer">
+          <button
+            className="primary-button deck-grid__footer-button"
+            type="button"
+            onClick={openCreateDeckModal}
+          >
+            <BookOpen size={16} />
+            New deck
+          </button>
         </div>
-
-        <aside className="dashboard-side">
-          <article className="side-panel side-panel--compact">
-            <div className="panel-heading">
-              <strong>Study pace</strong>
-              <Sparkles size={16} />
-            </div>
-            <p>{totalSessions} session{totalSessions === 1 ? '' : 's'} logged so far.</p>
-            <p>Last study day: {formatCalendarDate(profile?.summary.lastStudyDate ?? null)}</p>
-          </article>
-
-          <article className="side-panel side-panel--compact">
-            <div className="panel-heading">
-              <strong>Recent study</strong>
-            </div>
-            <div className="list-stack">
-              {sessions.length === 0 && <p className="hint-text">Your recent sessions will show here.</p>}
-              {sessions.map((session) => (
-                <div key={session.id} className="activity-item">
-                  <strong>{session.deckTitle}</strong>
-                  <small>
-                    {session.cardsStudied} cards · {session.mode} · {formatSmartDate(session.endedAt)}
-                  </small>
-                </div>
-              ))}
-            </div>
-          </article>
-
-          <article className="side-panel side-panel--compact">
-            <div className="panel-heading">
-              <strong>Latest activity</strong>
-            </div>
-            <div className="list-stack list-stack--scroll">
-              {activity.length === 0 && <p className="hint-text">Activity will show up after your first study session.</p>}
-              {activity.map((item) => (
-                <div key={item.id} className="activity-item">
-                  <strong>{item.title}</strong>
-                  <small>{item.description}</small>
-                </div>
-              ))}
-            </div>
-          </article>
-        </aside>
       </section>
 
       {showDeckModal && (
@@ -379,6 +373,21 @@ export function DashboardPage() {
             }}
           />
         </Modal>
+      )}
+
+      {deckToDelete && (
+        <ConfirmDialog
+          title={`Delete ${deckToDelete.title}?`}
+          description={`Delete this deck and remove all of its cards from your study space.`}
+          note="This also removes its study progress and cannot be undone."
+          confirmLabel="Delete deck"
+          onCancel={() => setDeckToDelete(null)}
+          onConfirm={async () => {
+            const targetDeck = deckToDelete
+            setDeckToDelete(null)
+            await deleteDeck(user.id, targetDeck.id)
+          }}
+        />
       )}
 
       {showImportModal && profile && (

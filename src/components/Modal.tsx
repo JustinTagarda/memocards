@@ -1,7 +1,8 @@
 'use client'
 
 import { X } from 'lucide-react'
-import { useEffect, type PropsWithChildren } from 'react'
+import { useEffect, useState, type PropsWithChildren } from 'react'
+import { createPortal } from 'react-dom'
 
 interface ModalProps extends PropsWithChildren {
   title: string
@@ -10,7 +11,10 @@ interface ModalProps extends PropsWithChildren {
 }
 
 export function Modal({ children, title, onClose, width = 'md' }: ModalProps) {
+  const [mounted, setMounted] = useState(false)
+
   useEffect(() => {
+    setMounted(true)
     const previous = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
@@ -18,7 +22,11 @@ export function Modal({ children, title, onClose, width = 'md' }: ModalProps) {
     }
   }, [])
 
-  return (
+  if (!mounted) {
+    return null
+  }
+
+  return createPortal(
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div
         aria-modal="true"
@@ -37,6 +45,7 @@ export function Modal({ children, title, onClose, width = 'md' }: ModalProps) {
         </div>
         <div className="modal-content">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

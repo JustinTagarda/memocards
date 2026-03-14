@@ -1,7 +1,8 @@
 'use client'
 
+import { Download } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react'
-import { buildDeckCsv, buildDeckExportBundle, createEmptyCardDraft, createEmptyDeckDraft, parseImportFile } from '../lib/importExport'
+import { buildDeckCsv, createEmptyCardDraft, createEmptyDeckDraft, parseImportFile } from '../lib/importExport'
 import { clearCardDraft, cloneCardDraft, loadCardDraft, saveCardDraft } from '../lib/cardEntry'
 import { parseTags, triggerDownload } from '../lib/utils'
 import type { Card, CardChoice, CardDraft, Deck, DeckDraft, Folder } from '../types/models'
@@ -542,7 +543,7 @@ export function CardForm({
   const labelPair = typeLabels[draft.type]
 
   return (
-    <form ref={formRef} className="stack-form" onSubmit={handleSubmit} onKeyDown={handleKeyDown}>
+    <form ref={formRef} className="stack-form stack-form--card" onSubmit={handleSubmit} onKeyDown={handleKeyDown}>
       {!isEditing && (
         <div className="form-callout">
           <small className="hint-text">
@@ -755,7 +756,7 @@ export function CardForm({
         Mark as favorite
       </label>
 
-      <div className="modal-actions">
+      <div className="modal-actions modal-actions--card">
         <button className="ghost-button" type="button" onClick={onCancel}>
           Cancel
         </button>
@@ -849,20 +850,6 @@ export function ExportMenu({ deck, cards }: ExportMenuProps) {
         className="ghost-button"
         type="button"
         onClick={() => {
-          const bundle = buildDeckExportBundle(deck, cards)
-          triggerDownload(
-            `${deck.title.replace(/\s+/g, '-').toLowerCase()}.json`,
-            JSON.stringify(bundle, null, 2),
-            'application/json',
-          )
-        }}
-      >
-        Export JSON
-      </button>
-      <button
-        className="ghost-button"
-        type="button"
-        onClick={() => {
           triggerDownload(
             `${deck.title.replace(/\s+/g, '-').toLowerCase()}.csv`,
             buildDeckCsv(cards),
@@ -870,6 +857,7 @@ export function ExportMenu({ deck, cards }: ExportMenuProps) {
           )
         }}
       >
+        <Download size={16} />
         Export CSV
       </button>
     </div>

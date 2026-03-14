@@ -1,8 +1,10 @@
 import type { User } from '@supabase/supabase-js'
 import { getCardAudioText } from '../lib/cardText'
+import { isLocalDevBypassEnabled, isLocalDevBypassUserId } from '../lib/devBypass'
 import { getSupabaseBrowserClient } from '../lib/supabase/browser'
 import { createInitialReviewState, isDue, applySpacedRepetition } from '../lib/spacedRepetition'
 import { hashText, nowIso, startOfLocalDayKey } from '../lib/utils'
+import * as devBypassStore from './devBypassStore'
 import type { Database, Json } from '../types/database'
 import type {
   ActivityLog,
@@ -445,6 +447,11 @@ async function syncDeckCounts(uid: string, deckId: string) {
 }
 
 export async function ensureUserProfile(user: User) {
+  if (isLocalDevBypassUserId(user.id)) {
+    await devBypassStore.ensureProfile()
+    return
+  }
+
   const timestamp = nowIso()
   const fullName =
     user.user_metadata['full_name'] ??
@@ -485,6 +492,10 @@ export async function ensureUserProfile(user: User) {
 }
 
 export async function fetchUserProfile(uid: string) {
+  if (isLocalDevBypassUserId(uid)) {
+    return devBypassStore.fetchUserProfile()
+  }
+
   const [profileRow, settingsRow, deckRows] = await Promise.all([
     assertNoError(commonSchema().from('profiles').select('*').eq('id', uid).maybeSingle()),
     fetchSettingsRow(uid),
@@ -496,6 +507,10 @@ export async function fetchUserProfile(uid: string) {
 }
 
 export async function fetchFolders(uid: string) {
+  if (isLocalDevBypassUserId(uid)) {
+    return devBypassStore.fetchFolders()
+  }
+
   const rows = await assertNoError(
     memocardsSchema().from('folders').select('*').eq('user_id', uid).order('name', { ascending: true }),
   )
@@ -503,6 +518,10 @@ export async function fetchFolders(uid: string) {
 }
 
 export async function fetchDecks(uid: string) {
+  if (isLocalDevBypassUserId(uid)) {
+    return devBypassStore.fetchDecks()
+  }
+
   const rows = await assertNoError(
     memocardsSchema().from('decks').select('*').eq('user_id', uid).order('updated_at', { ascending: false }),
   )
@@ -510,6 +529,10 @@ export async function fetchDecks(uid: string) {
 }
 
 export async function fetchDeck(uid: string, deckId: string) {
+  if (isLocalDevBypassUserId(uid)) {
+    return devBypassStore.fetchDeck(deckId)
+  }
+
   const row = await assertNoError(
     memocardsSchema().from('decks').select('*').eq('user_id', uid).eq('id', deckId).maybeSingle(),
   )
@@ -517,6 +540,10 @@ export async function fetchDeck(uid: string, deckId: string) {
 }
 
 export async function fetchCards(uid: string, deckId: string) {
+  if (isLocalDevBypassUserId(uid)) {
+    return devBypassStore.fetchCards(deckId)
+  }
+
   const rows = await assertNoError(
     memocardsSchema()
       .from('cards')
@@ -529,6 +556,10 @@ export async function fetchCards(uid: string, deckId: string) {
 }
 
 export async function fetchRecentActivity(uid: string) {
+  if (isLocalDevBypassUserId(uid)) {
+    return devBypassStore.fetchRecentActivity()
+  }
+
   const rows = await assertNoError(
     memocardsSchema()
       .from('activity')
@@ -541,6 +572,10 @@ export async function fetchRecentActivity(uid: string) {
 }
 
 export async function fetchRecentSessions(uid: string) {
+  if (isLocalDevBypassUserId(uid)) {
+    return devBypassStore.fetchRecentSessions()
+  }
+
   const rows = await assertNoError(
     memocardsSchema()
       .from('sessions')
@@ -553,6 +588,12 @@ export async function fetchRecentSessions(uid: string) {
 }
 
 export async function saveDeck(uid: string, draft: DeckDraft, deckId?: string) {
+  if (isLocalDevBypassUserId(uid)) {
+    const nextDeckId = await devBypassStore.saveDeck(draft, deckId)
+    notifyDataChanged()
+    return nextDeckId
+  }
+
   const timestamp = nowIso()
 
   if (deckId) {
@@ -599,6 +640,12 @@ export async function saveDeck(uid: string, draft: DeckDraft, deckId?: string) {
 }
 
 export async function deleteDeck(uid: string, deckId: string) {
+  if (isLocalDevBypassUserId(uid)) {
+    await devBypassStore.deleteDeck(deckId)
+    notifyDataChanged()
+    return
+  }
+
   const deckRow = await assertNoError(
     memocardsSchema()
       .from('decks')
@@ -621,6 +668,12 @@ export async function deleteDeck(uid: string, deckId: string) {
 }
 
 export async function createFolder(uid: string, name: string, color: string) {
+  if (isLocalDevBypassUserId(uid)) {
+    await devBypassStore.createFolder(name, color)
+    notifyDataChanged()
+    return
+  }
+
   const timestamp = nowIso()
   await assertNoError(
     memocardsSchema().from('folders').insert({
@@ -642,6 +695,12 @@ export async function createFolder(uid: string, name: string, color: string) {
 }
 
 export async function deleteFolder(uid: string, folderId: string) {
+  if (isLocalDevBypassUserId(uid)) {
+    await devBypassStore.deleteFolder(folderId)
+    notifyDataChanged()
+    return
+  }
+
   await assertNoError(
     memocardsSchema().from('decks').update({ folder_id: null, updated_at: nowIso() }).eq('user_id', uid).eq('folder_id', folderId),
   )
@@ -656,6 +715,12 @@ export async function saveCard(
   userSettings: UserSettings,
   existingCard?: Card,
 ) {
+  if (isLocalDevBypassUserId(uid)) {
+    await devBypassStore.saveCard(deckId, draft, userSettings, existingCard)
+    notifyDataChanged()
+    return
+  }
+
   const timestamp = nowIso()
 
   if (existingCard) {
@@ -701,6 +766,12 @@ export async function saveCard(
 }
 
 export async function deleteCard(uid: string, deckId: string, cardId: string) {
+  if (isLocalDevBypassUserId(uid)) {
+    await devBypassStore.deleteCard(deckId, cardId)
+    notifyDataChanged()
+    return
+  }
+
   await assertNoError(
     memocardsSchema().from('cards').delete().eq('user_id', uid).eq('deck_id', deckId).eq('id', cardId),
   )
@@ -708,6 +779,12 @@ export async function deleteCard(uid: string, deckId: string, cardId: string) {
 }
 
 export async function toggleCardFavorite(uid: string, deckId: string, card: Card) {
+  if (isLocalDevBypassUserId(uid)) {
+    await devBypassStore.toggleCardFavorite(card.id)
+    notifyDataChanged()
+    return
+  }
+
   await assertNoError(
     memocardsSchema()
       .from('cards')
@@ -730,6 +807,12 @@ export async function reviewCard(
   mode: StudyMode,
   responseText: string,
 ) {
+  if (isLocalDevBypassUserId(uid)) {
+    await devBypassStore.reviewCard(deckId, card, assessment, mode, responseText)
+    notifyDataChanged()
+    return
+  }
+
   const timestamp = nowIso()
   const reviewState = applySpacedRepetition(card.reviewState, assessment, timestamp)
   const wasCorrect = assessment !== 'again'
@@ -776,6 +859,12 @@ export async function recordStudySession(
   startedAt: string,
   results: SessionCardResult[],
 ) {
+  if (isLocalDevBypassUserId(uid)) {
+    await devBypassStore.recordStudySession(deck, mode, startedAt, results)
+    notifyDataChanged()
+    return
+  }
+
   const endedAt = nowIso()
   const correct = results.filter((result) => result.wasCorrect).length
   const incorrect = results.length - correct
@@ -851,6 +940,10 @@ export async function recordStudySession(
 }
 
 export async function fetchDeckExport(uid: string, deckId: string) {
+  if (isLocalDevBypassUserId(uid)) {
+    return devBypassStore.fetchDeckExport(deckId)
+  }
+
   const [deckRow, cardRows] = await Promise.all([
     assertNoError(
       memocardsSchema().from('decks').select('*').eq('user_id', uid).eq('id', deckId).maybeSingle(),
@@ -876,6 +969,12 @@ export async function importDeckBundle(
   cards: CardDraft[],
   settings: UserSettings,
 ) {
+  if (isLocalDevBypassUserId(uid)) {
+    const deckId = await devBypassStore.importDeckBundle(draft, cards, settings)
+    notifyDataChanged()
+    return deckId
+  }
+
   const deckId = await saveDeck(uid, draft)
   const timestamp = nowIso()
 
@@ -902,6 +1001,10 @@ export async function requestCardAudio(
   cardId: string,
   side: 'prompt' | 'answer',
 ) {
+  if (isLocalDevBypassEnabled) {
+    return devBypassStore.requestCardAudio()
+  }
+
   const response = await fetch('/api/audio/generate', {
     method: 'POST',
     headers: {
@@ -923,6 +1026,10 @@ export async function queueAnswerEvaluation(
   card: Card,
   submittedAnswer: string,
 ) {
+  if (isLocalDevBypassEnabled) {
+    return devBypassStore.queueAnswerEvaluation()
+  }
+
   const response = await fetch('/api/answer-evaluations/queue', {
     method: 'POST',
     headers: {
