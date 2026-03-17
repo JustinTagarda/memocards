@@ -1,8 +1,7 @@
 'use client'
 
 import { PencilLine, Trash2, Upload } from 'lucide-react'
-import { useMemo, useState, type ChangeEvent } from 'react'
-import { Modal } from './Modal'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { CardForm } from './forms'
 import {
   getSupportedDocumentExtensions,
@@ -62,10 +61,18 @@ export function DocumentImportComposer({
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [editingCandidateId, setEditingCandidateId] = useState<string | null>(null)
+  const editorRef = useRef<HTMLElement | null>(null)
 
   const supportedExtensions = useMemo(() => getSupportedDocumentExtensions(), [])
   const selectedCount = candidates.filter((candidate) => candidate.selected).length
   const editingCandidate = candidates.find((candidate) => candidate.id === editingCandidateId) ?? null
+
+  useEffect(() => {
+    if (!editingCandidate) {
+      return
+    }
+    editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [editingCandidate])
 
   function resetFeedback() {
     setError(null)
@@ -272,6 +279,44 @@ export function DocumentImportComposer({
           )}
         </div>
 
+        {editingCandidate && (
+          <section ref={editorRef} className="editor-shell editor-shell--inline">
+            <div className="editor-shell__header">
+              <div className="editor-shell__copy">
+                <p className="eyebrow">Review Candidate</p>
+                <h2>Edit parsed card</h2>
+                <p>Refine this draft before saving it back into the import list.</p>
+              </div>
+
+              <div className="editor-shell__meta">
+                <span className="status-pill">{editingCandidate.sourceLabel}</span>
+                <span className="status-pill">{editingCandidate.draft.type.replace('_', ' ')}</span>
+                <span className="status-pill">
+                  {editingCandidate.confidence === 'high' ? 'High confidence' : 'Needs review'}
+                </span>
+              </div>
+            </div>
+
+            <div className="editor-shell__body">
+              <CardForm
+                initialValue={editingCandidate.draft}
+                isEditing
+                onCancel={() => setEditingCandidateId(null)}
+                onSubmit={async (draft) => {
+                  setCandidates((current) =>
+                    current.map((candidate) =>
+                      candidate.id === editingCandidate.id
+                        ? { ...candidate, draft: prepareDraft(draft) }
+                        : candidate,
+                    ),
+                  )
+                  setEditingCandidateId(null)
+                }}
+              />
+            </div>
+          </section>
+        )}
+
         {candidates.length > 0 && (
           <div className="quick-add-preview document-import-preview">
             <div className="panel-heading">
@@ -376,29 +421,6 @@ export function DocumentImportComposer({
         )}
       </section>
 
-      {editingCandidate && (
-        <Modal
-          title={`Edit ${editingCandidate.draft.type.replace('_', ' ')} card`}
-          onClose={() => setEditingCandidateId(null)}
-          width="lg"
-        >
-          <CardForm
-            initialValue={editingCandidate.draft}
-            isEditing
-            onCancel={() => setEditingCandidateId(null)}
-            onSubmit={async (draft) => {
-              setCandidates((current) =>
-                current.map((candidate) =>
-                  candidate.id === editingCandidate.id
-                    ? { ...candidate, draft: prepareDraft(draft) }
-                    : candidate,
-                ),
-              )
-              setEditingCandidateId(null)
-            }}
-          />
-        </Modal>
-      )}
     </>
   )
 }

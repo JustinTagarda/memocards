@@ -1,35 +1,18 @@
 'use client'
 
 import { ArrowLeft, BookOpen, PencilLine, Plus, Search, Star, Trash2, Upload } from 'lucide-react'
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import type { Route } from 'next'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { ConfirmDialog } from '../components/ConfirmDialog'
-import { Modal } from '../components/Modal'
-import { QuickAddComposer } from '../components/QuickAddComposer'
-import { CardForm, DeckForm, ExportMenu } from '../components/forms'
+import { ExportMenu } from '../components/forms'
 import { useAuth } from '../hooks/useAuth'
 import { useCards, useDeck, useFolders, useUserProfile } from '../hooks/useMemoCards'
-import {
-  applyEntryDefaultsToDraft,
-  buildContinueCardDraft,
-  buildCreateCardDraft,
-  loadDeckEntryMemory,
-  saveDeckEntryMemory,
-} from '../lib/cardEntry'
 import { getCardPrompt, getCardSearchText } from '../lib/cardText'
 import { formatSmartDate } from '../lib/utils'
-import { deleteCard, deleteDeck, saveCard, saveDeck, toggleCardFavorite } from '../services/memocards'
-import type { Card, CardDraft } from '../types/models'
-
-function createEmptyEntryMemory() {
-  return {
-    lastSavedDraft: null,
-    lastCardType: null,
-    lastTags: [],
-  }
-}
+import { deleteCard, deleteDeck, toggleCardFavorite } from '../services/memocards'
+import type { Card } from '../types/models'
 
 export function DeckPage() {
   const params = useParams<{ deckId: string }>()
@@ -44,17 +27,8 @@ export function DeckPage() {
   const [search, setSearch] = useState('')
   const [tagFilter, setTagFilter] = useState('all')
   const [favoritesOnly, setFavoritesOnly] = useState(false)
-  const [showDeckModal, setShowDeckModal] = useState(false)
-  const [showCardModal, setShowCardModal] = useState(false)
   const [showDeleteDeckDialog, setShowDeleteDeckDialog] = useState(false)
   const [cardToDelete, setCardToDelete] = useState<Card | null>(null)
-  const [editingCard, setEditingCard] = useState<Card | null>(null)
-  const [quickAddDraft, setQuickAddDraft] = useState<CardDraft | null>(null)
-  const [entryMemory, setEntryMemory] = useState(() => (deckId ? loadDeckEntryMemory(deckId) : createEmptyEntryMemory()))
-
-  useEffect(() => {
-    setEntryMemory(deckId ? loadDeckEntryMemory(deckId) : createEmptyEntryMemory())
-  }, [deckId])
 
   const tags = useMemo(
     () => Array.from(new Set(cards.flatMap((card) => card.tags))).sort((left, right) => left.localeCompare(right)),
@@ -70,7 +44,6 @@ export function DeckPage() {
       return searchMatch && tagMatch && favoriteMatch
     })
   }, [cards, favoritesOnly, search, tagFilter])
-  const existingQuestions = useMemo(() => cards.map((card) => getCardPrompt(card)), [cards])
 
   if (!user || !deckId) {
     return null
@@ -91,32 +64,10 @@ export function DeckPage() {
     )
   }
 
-  const activeUser = user
-  const activeDeck = deck
   const folder = folders.find((item) => item.id === deck.folderId)
   const mastery = deck.counts.totalCards === 0
     ? 0
     : Math.round((deck.counts.masteredCards / deck.counts.totalCards) * 100)
-  const entryDefaults = deck.preferences.entryDefaults
-  const createCardFallback = buildCreateCardDraft(entryDefaults, entryMemory)
-  const quickAddPreferredType = entryMemory.lastCardType ?? entryDefaults.cardType
-  const showQuickAdd = false
-
-  function rememberCreatedDraft(draft: CardDraft) {
-    saveDeckEntryMemory(activeDeck.id, draft)
-    setEntryMemory(loadDeckEntryMemory(activeDeck.id))
-  }
-
-  async function saveNewCard(draft: CardDraft) {
-    if (!profile) {
-      throw new Error('Profile not ready yet.')
-    }
-
-    const nextDraft = applyEntryDefaultsToDraft(draft, entryDefaults, entryMemory)
-    await saveCard(activeUser.id, activeDeck.id, nextDraft, profile.settings)
-    rememberCreatedDraft(nextDraft)
-    return nextDraft
-  }
 
   return (
     <div className="page-stack page-stack--deck">
@@ -150,14 +101,14 @@ export function DeckPage() {
         </div>
         <div className="deck-detail-hero__actions">
           <div className="deck-detail-hero__actions-grid">
-            <button className="primary-button" type="button" onClick={() => router.push(`/app/decks/${deck.id}/study`)}>
+            <Link className="primary-button" href={`/app/decks/${deck.id}/study`}>
               <BookOpen size={16} />
               Study deck
-            </button>
-            <button className="ghost-button" type="button" onClick={() => setShowDeckModal(true)}>
+            </Link>
+            <Link className="ghost-button" href={`/app/decks/${deck.id}/edit`}>
               <PencilLine size={16} />
               Edit deck
-            </button>
+            </Link>
             <button
               className="ghost-button deck-detail-hero__delete"
               type="button"
@@ -168,18 +119,10 @@ export function DeckPage() {
               <Trash2 size={16} />
               Delete deck
             </button>
-            <button
-              className="primary-button"
-              type="button"
-              onClick={() => {
-                setEditingCard(null)
-                setQuickAddDraft(null)
-                setShowCardModal(true)
-              }}
-            >
+            <Link className="primary-button" href={`/app/decks/${deck.id}/cards/new`}>
               <Plus size={16} />
               Add card
-            </button>
+            </Link>
             <Link className="ghost-button" href={`/app/decks/${deck.id}/import` as Route}>
               <Upload size={16} />
               Import notes
@@ -249,22 +192,6 @@ export function DeckPage() {
         </div>
       </section>
 
-      {showQuickAdd && profile && (
-        <QuickAddComposer
-          deckId={deck.id}
-          existingQuestions={existingQuestions}
-          preferredType={quickAddPreferredType}
-          onExpand={(draft) => {
-            setEditingCard(null)
-            setQuickAddDraft(applyEntryDefaultsToDraft(draft, entryDefaults, entryMemory))
-            setShowCardModal(true)
-          }}
-          onSave={async (draft) => {
-            await saveNewCard(draft)
-          }}
-        />
-      )}
-
       <section className="deck-workspace deck-workspace--single">
         <div className="card-list card-list--deck">
           {filteredCards.length === 0 && (
@@ -314,19 +241,14 @@ export function DeckPage() {
                   >
                     <Star size={15} />
                   </button>
-                  <button
+                  <Link
                     aria-label="Edit card"
                     className="ghost-button ghost-button--icon card-row__icon-button"
+                    href={`/app/decks/${deck.id}/cards/${card.id}/edit`}
                     title="Edit"
-                    type="button"
-                    onClick={() => {
-                      setEditingCard(card)
-                      setQuickAddDraft(null)
-                      setShowCardModal(true)
-                    }}
                   >
                     <PencilLine size={15} />
-                  </button>
+                  </Link>
                   <button
                     aria-label="Delete card"
                     className="ghost-button ghost-button--icon card-row__icon-button card-row__icon-button--danger"
@@ -371,84 +293,6 @@ export function DeckPage() {
           <p>Auto-play setting: {profile?.settings.autoPlayAudio ? 'On' : 'Off'}</p>
         </article>
       </section>
-
-      {showDeckModal && (
-        <Modal title={`Edit ${deck.title}`} onClose={() => setShowDeckModal(false)} width="lg">
-          <DeckForm
-            folders={folders}
-            initialValue={{
-              title: deck.title,
-              description: deck.description,
-              folderId: deck.folderId,
-              tags: deck.tags,
-              preferences: deck.preferences,
-            }}
-            onCancel={() => setShowDeckModal(false)}
-            onSubmit={async (draft) => {
-              await saveDeck(user.id, draft, deck.id)
-              setShowDeckModal(false)
-            }}
-          />
-        </Modal>
-      )}
-
-      {showCardModal && profile && (
-        <Modal
-          title={editingCard ? 'Edit card' : 'Create card'}
-          onClose={() => {
-            setShowCardModal(false)
-            setEditingCard(null)
-            setQuickAddDraft(null)
-          }}
-          width="lg"
-        >
-          <CardForm
-            fallbackValue={!editingCard ? createCardFallback : undefined}
-            initialValue={
-              editingCard
-                ? {
-                    type: editingCard.type,
-                    front: editingCard.front,
-                    back: editingCard.back,
-                    prompt: editingCard.prompt,
-                    answer: editingCard.answer,
-                    explanation: editingCard.explanation,
-                    choices: editingCard.choices,
-                    expectedAnswer: editingCard.expectedAnswer,
-                    tags: editingCard.tags,
-                    isFavorite: editingCard.isFavorite,
-                  }
-                : quickAddDraft ?? undefined
-            }
-            isEditing={Boolean(editingCard)}
-            lastSavedDraft={entryMemory.lastSavedDraft}
-            storageKey={!editingCard ? deck.id : undefined}
-            onCancel={() => {
-              setShowCardModal(false)
-              setEditingCard(null)
-              setQuickAddDraft(null)
-            }}
-            onSubmit={async (draft) => {
-              if (editingCard) {
-                await saveCard(user.id, deck.id, draft, profile.settings, editingCard)
-              } else {
-                await saveNewCard(draft)
-              }
-              setShowCardModal(false)
-              setEditingCard(null)
-              setQuickAddDraft(null)
-            }}
-            onSubmitAndContinue={
-              editingCard
-                ? undefined
-                : async (draft) => {
-                    const savedDraft = await saveNewCard(draft)
-                    return buildContinueCardDraft(savedDraft, entryDefaults)
-                  }
-            }
-          />
-        </Modal>
-      )}
 
       {showDeleteDeckDialog && (
         <ConfirmDialog

@@ -287,7 +287,7 @@ export function DeckForm({ initialValue, folders, onCancel, onSubmit }: DeckForm
           {saving ? 'Saving...' : 'Save deck'}
         </button>
         <button className="ghost-button modal-actions__close" type="button" onClick={onCancel}>
-          Close
+          Cancel
         </button>
       </div>
     </form>

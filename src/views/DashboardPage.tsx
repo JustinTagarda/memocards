@@ -6,11 +6,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Modal } from '../components/Modal'
-import { DeckForm, FolderForm, ImportDialog } from '../components/forms'
+import { FolderForm, ImportDialog } from '../components/forms'
 import { useAuth } from '../hooks/useAuth'
 import { useDecks, useFolders, useUserProfile } from '../hooks/useMemoCards'
 import { formatCalendarDate, formatSmartDate } from '../lib/utils'
-import { createFolder, deleteDeck, importDeckBundle, saveDeck } from '../services/memocards'
+import { createFolder, deleteDeck, importDeckBundle } from '../services/memocards'
 import type { Deck } from '../types/models'
 
 export function DashboardPage() {
@@ -23,9 +23,7 @@ export function DashboardPage() {
   const [search, setSearch] = useState('')
   const [folderFilter, setFolderFilter] = useState('all')
   const [tagFilter, setTagFilter] = useState('all')
-  const [editingDeck, setEditingDeck] = useState<Deck | null>(null)
   const [deckToDelete, setDeckToDelete] = useState<Deck | null>(null)
-  const [showDeckModal, setShowDeckModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
   const [showFolderModal, setShowFolderModal] = useState(false)
 
@@ -56,11 +54,6 @@ export function DashboardPage() {
     return null
   }
 
-  function openCreateDeckModal() {
-    setEditingDeck(null)
-    setShowDeckModal(true)
-  }
-
   return (
     <div className="page-stack page-stack--dashboard">
       <section className="dashboard-hero">
@@ -77,14 +70,10 @@ export function DashboardPage() {
 
           <div className="hero-panel__tools">
             <div className="hero-panel__actions hero-panel__actions--dashboard">
-              <button
-                className="primary-button"
-                type="button"
-                onClick={openCreateDeckModal}
-              >
+              <Link className="primary-button" href="/app/decks/new">
                 <BookOpen size={16} />
                 New deck
-              </button>
+              </Link>
               <button className="ghost-button" type="button" onClick={() => setShowImportModal(true)}>
                 <Import size={16} />
                 Import deck
@@ -204,14 +193,9 @@ export function DashboardPage() {
             <p className="eyebrow">Your decks</p>
             <div className="section-heading__title-row">
               <h2>Study sets</h2>
-              <button
-                aria-label="Create deck"
-                className="ghost-button ghost-button--icon section-heading__action"
-                type="button"
-                onClick={openCreateDeckModal}
-              >
+              <Link aria-label="Create deck" className="ghost-button ghost-button--icon section-heading__action" href="/app/decks/new">
                 <Plus size={16} />
-              </button>
+              </Link>
             </div>
           </div>
           <small>{profile?.summary.totalDecks ?? 0} total</small>
@@ -285,17 +269,10 @@ export function DashboardPage() {
                         <FolderOpen size={15} />
                         Open
                       </Link>
-                      <button
-                        className="ghost-button"
-                        type="button"
-                        onClick={() => {
-                          setEditingDeck(deck)
-                          setShowDeckModal(true)
-                        }}
-                      >
+                      <Link className="ghost-button" href={`/app/decks/${deck.id}/edit`}>
                         <PencilLine size={15} />
                         Edit
-                      </button>
+                      </Link>
                       <button
                         className="ghost-button deck-card__delete"
                         type="button"
@@ -314,54 +291,12 @@ export function DashboardPage() {
         })}
 
         <div className="deck-grid__footer">
-          <button
-            className="primary-button deck-grid__footer-button"
-            type="button"
-            onClick={openCreateDeckModal}
-          >
+          <Link className="primary-button deck-grid__footer-button" href="/app/decks/new">
             <BookOpen size={16} />
             New deck
-          </button>
+          </Link>
         </div>
       </section>
-
-      {showDeckModal && (
-        <Modal
-          title={editingDeck ? `Edit ${editingDeck.title}` : 'Create deck'}
-          onClose={() => {
-            setShowDeckModal(false)
-            setEditingDeck(null)
-          }}
-          width="lg"
-        >
-          <DeckForm
-            folders={folders}
-            initialValue={
-              editingDeck
-                ? {
-                    title: editingDeck.title,
-                    description: editingDeck.description,
-                    folderId: editingDeck.folderId,
-                    tags: editingDeck.tags,
-                    preferences: editingDeck.preferences,
-                  }
-                : undefined
-            }
-            onCancel={() => {
-              setShowDeckModal(false)
-              setEditingDeck(null)
-            }}
-            onSubmit={async (draft) => {
-              const nextDeckId = await saveDeck(user.id, draft, editingDeck?.id)
-              setShowDeckModal(false)
-              setEditingDeck(null)
-              if (!editingDeck) {
-                router.push(`/app/decks/${nextDeckId}`)
-              }
-            }}
-          />
-        </Modal>
-      )}
 
       {showFolderModal && (
         <Modal title="Create folder" onClose={() => setShowFolderModal(false)} width="sm">
