@@ -8,7 +8,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ExportMenu } from '../components/forms'
 import { useAuth } from '../hooks/useAuth'
-import { useCards, useDeck, useFolders, useUserProfile } from '../hooks/useMemoCards'
+import { useCards, useDeck, useFolders } from '../hooks/useMemoCards'
 import { getCardPrompt, getCardSearchText } from '../lib/cardText'
 import { formatSmartDate } from '../lib/utils'
 import { deleteCard, deleteDeck, toggleCardFavorite } from '../services/memocards'
@@ -19,7 +19,6 @@ export function DeckPage() {
   const deckId = typeof params.deckId === 'string' ? params.deckId : undefined
   const router = useRouter()
   const { user } = useAuth()
-  const { data: profile } = useUserProfile(user?.id)
   const { data: folders } = useFolders(user?.id)
   const { data: deck, loading: deckLoading } = useDeck(user?.id, deckId)
   const { data: cards, loading: cardsLoading } = useCards(user?.id, deckId)
@@ -263,35 +262,6 @@ export function DeckPage() {
             </article>
           ))}
         </div>
-      </section>
-
-      <section className="deck-bottom-panels">
-        <article className="side-panel side-panel--compact side-panel--deck-bottom">
-          <div className="panel-heading">
-            <strong>Long-answer cards</strong>
-          </div>
-          <p>
-            Longer response cards can store keywords, model answers, and extra notes so you can review
-            them more clearly later.
-          </p>
-        </article>
-
-        <article className="side-panel side-panel--compact side-panel--deck-bottom">
-          <div className="panel-heading">
-            <strong>Audio</strong>
-          </div>
-          <p>
-            Tap audio on a study card when you want to hear the question or answer out loud.
-          </p>
-        </article>
-
-        <article className="side-panel side-panel--compact side-panel--deck-bottom">
-          <div className="panel-heading">
-            <strong>Your settings</strong>
-          </div>
-          <p>Voice: {profile?.settings.defaultVoice ?? 'Not set'}</p>
-          <p>Auto-play setting: {profile?.settings.autoPlayAudio ? 'On' : 'Off'}</p>
-        </article>
       </section>
 
       {showDeleteDeckDialog && (

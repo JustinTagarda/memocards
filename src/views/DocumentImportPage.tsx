@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowLeft, Upload } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
@@ -54,7 +54,6 @@ export function DocumentImportPage() {
   const activeProfile = profile
   const activeDeck = deck
   const entryDefaults = activeDeck.preferences.entryDefaults
-  const defaultTagsLabel = entryDefaults.tags.length > 0 ? entryDefaults.tags.join(', ') : 'No default tags'
 
   function rememberCreatedDraft(draft: CardDraft) {
     saveDeckEntryMemory(activeDeck.id, draft)
@@ -76,7 +75,7 @@ export function DocumentImportPage() {
         </Link>
       </div>
 
-      <section className="dashboard-hero document-import-hero">
+      <section className="dashboard-hero dashboard-hero--single document-import-hero">
         <article className="hero-panel hero-panel--feature hero-panel--dashboard">
           <div className="hero-panel__copy">
             <p className="eyebrow">Document Import</p>
@@ -110,27 +109,6 @@ export function DocumentImportPage() {
                 <strong>{entryDefaults.tags.length}</strong>
                 <span>default tags</span>
               </article>
-            </div>
-          </div>
-        </article>
-
-        <article className="side-panel side-panel--focus side-panel--today">
-          <div className="panel-heading">
-            <strong>Best Results</strong>
-            <Upload size={16} />
-          </div>
-          <div className="list-stack">
-            <div className="activity-item">
-              <strong>Use text-based files</strong>
-              <small>`.txt`, `.md`, `.markdown`, `.text`, and `.tsv` work best in this version.</small>
-            </div>
-            <div className="activity-item">
-              <strong>Auto detect first</strong>
-              <small>Switch to a fixed parser mode when your notes consistently use one pattern.</small>
-            </div>
-            <div className="activity-item">
-              <strong>Defaults still apply</strong>
-              <small>{defaultTagsLabel}</small>
             </div>
           </div>
         </article>

@@ -571,6 +571,54 @@ export async function saveCard(deckId: string, draft: CardDraft, userSettings: U
   store.cards.unshift(makeCardFromDraft(deckId, draft, userSettings, timestamp))
 }
 
+export async function saveCardsBatch(
+  deckId: string,
+  drafts: CardDraft[],
+  userSettings: UserSettings,
+  onProgress?: (progress: { percent: number; label: string }) => void,
+) {
+  if (drafts.length === 0) {
+    return
+  }
+
+  const batchSize = drafts.length
+  const baseTimestamp = Date.now()
+
+  onProgress?.({
+    percent: 15,
+    label: `Preparing ${batchSize} card${batchSize === 1 ? '' : 's'}...`,
+  })
+
+  const createdCards = drafts.map((draft, index) =>
+    makeCardFromDraft(deckId, draft, userSettings, new Date(baseTimestamp + index).toISOString()),
+  )
+
+  onProgress?.({
+    percent: 55,
+    label: `Saving ${batchSize} card${batchSize === 1 ? '' : 's'}...`,
+  })
+
+  store.cards.unshift(...createdCards)
+
+  onProgress?.({
+    percent: 82,
+    label: 'Updating deck totals...',
+  })
+
+  addActivity({
+    type: 'card_imported',
+    title: batchSize === 1 ? 'Card created' : 'Cards created',
+    description: `Saved ${batchSize} card${batchSize === 1 ? '' : 's'}`,
+    deckId,
+    cardId: null,
+  })
+
+  onProgress?.({
+    percent: 100,
+    label: `Saved ${batchSize} card${batchSize === 1 ? '' : 's'}.`,
+  })
+}
+
 export async function deleteCard(deckId: string, cardId: string) {
   store.cards = store.cards.filter((card) => !(card.deckId === deckId && card.id === cardId))
 }

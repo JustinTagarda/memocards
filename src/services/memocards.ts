@@ -765,6 +765,63 @@ export async function saveCard(
   await syncDeckCounts(uid, deckId)
 }
 
+export async function saveCardsBatch(
+  uid: string,
+  deckId: string,
+  drafts: CardDraft[],
+  userSettings: UserSettings,
+  onProgress?: (progress: { percent: number; label: string }) => void,
+) {
+  if (drafts.length === 0) {
+    return
+  }
+
+  if (isLocalDevBypassUserId(uid)) {
+    await devBypassStore.saveCardsBatch(deckId, drafts, userSettings, onProgress)
+    notifyDataChanged()
+    return
+  }
+
+  const batchSize = drafts.length
+  const baseTimestamp = Date.now()
+
+  onProgress?.({
+    percent: 15,
+    label: `Preparing ${batchSize} card${batchSize === 1 ? '' : 's'}...`,
+  })
+
+  const records = drafts.map((draft, index) =>
+    createCardRecord(uid, deckId, draft, userSettings, new Date(baseTimestamp + index).toISOString()),
+  )
+
+  onProgress?.({
+    percent: 55,
+    label: `Saving ${batchSize} card${batchSize === 1 ? '' : 's'}...`,
+  })
+
+  await assertNoError(memocardsSchema().from('cards').insert(records))
+
+  onProgress?.({
+    percent: 82,
+    label: 'Updating deck totals...',
+  })
+
+  await createActivity(uid, {
+    type: 'card_imported',
+    title: batchSize === 1 ? 'Card created' : 'Cards created',
+    description: `Saved ${batchSize} card${batchSize === 1 ? '' : 's'}`,
+    deckId,
+    cardId: null,
+  })
+
+  await syncDeckCounts(uid, deckId)
+
+  onProgress?.({
+    percent: 100,
+    label: `Saved ${batchSize} card${batchSize === 1 ? '' : 's'}.`,
+  })
+}
+
 export async function deleteCard(uid: string, deckId: string, cardId: string) {
   if (isLocalDevBypassUserId(uid)) {
     await devBypassStore.deleteCard(deckId, cardId)

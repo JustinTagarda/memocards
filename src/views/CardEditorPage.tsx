@@ -156,6 +156,13 @@ export function CardEditorPage({ mode }: CardEditorPageProps) {
             isEditing={Boolean(editingCard)}
             lastSavedDraft={entryMemory.lastSavedDraft}
             storageKey={!editingCard ? activeDeck.id : undefined}
+            onCreateMultiple={
+              editingCard
+                ? undefined
+                : () => {
+                    router.push(`/app/decks/${activeDeck.id}/cards/bulk` as Route)
+                  }
+            }
             onCancel={() => router.push(backHref as Route)}
             onSubmit={async (draft) => {
               if (editingCard) {

@@ -25,6 +25,7 @@ interface CardFormProps {
   isEditing?: boolean
   lastSavedDraft?: CardDraft | null
   storageKey?: string
+  onCreateMultiple?: () => void
   onCancel: () => void
   onSubmit: (draft: CardDraft) => Promise<void>
   onSubmitAndContinue?: (draft: CardDraft) => Promise<CardDraft>
@@ -387,6 +388,7 @@ export function CardForm({
   isEditing = false,
   lastSavedDraft = null,
   storageKey,
+  onCreateMultiple,
   onCancel,
   onSubmit,
   onSubmitAndContinue,
@@ -757,24 +759,45 @@ export function CardForm({
       </label>
 
       <div className="modal-actions modal-actions--card">
-        <button className="ghost-button" type="button" onClick={onCancel}>
-          Cancel
-        </button>
-        {!isEditing && onSubmitAndContinue && (
-          <button
-            className="ghost-button"
-            disabled={saving}
-            type="button"
-            onClick={() => {
-              void handleSubmitAndContinue()
-            }}
-          >
-            {saving ? 'Saving...' : 'Save & add another'}
-          </button>
+        {!isEditing ? (
+          <>
+            <button className="primary-button" disabled={saving} type="submit">
+              {saving ? 'Saving...' : 'Save card'}
+            </button>
+            {onSubmitAndContinue && (
+              <button
+                className="ghost-button"
+                disabled={saving}
+                type="button"
+                onClick={() => {
+                  void handleSubmitAndContinue()
+                }}
+              >
+                {saving ? 'Saving...' : 'Save & add another'}
+              </button>
+            )}
+            <button
+              className="ghost-button"
+              disabled={saving || !onCreateMultiple}
+              type="button"
+              onClick={onCreateMultiple}
+            >
+              Create Multiple Cards
+            </button>
+            <button className="ghost-button" type="button" onClick={onCancel}>
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="ghost-button" type="button" onClick={onCancel}>
+              Cancel
+            </button>
+            <button className="primary-button" disabled={saving} type="submit">
+              {saving ? 'Saving...' : 'Save card'}
+            </button>
+          </>
         )}
-        <button className="primary-button" disabled={saving} type="submit">
-          {saving ? 'Saving...' : 'Save card'}
-        </button>
       </div>
     </form>
   )
