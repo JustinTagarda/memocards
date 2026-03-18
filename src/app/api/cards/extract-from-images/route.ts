@@ -6,6 +6,9 @@ import { createSupabaseServerClient } from '../../../../lib/supabase/server'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
+const WORKER_INIT_TIMEOUT_MS = 20000
+const RECOGNIZE_TIMEOUT_MS = 30000
+
 type OcrPage = {
   id: string
   name: string
@@ -16,6 +19,22 @@ type OcrPage = {
 
 let workerPromise: Promise<Tesseract.Worker> | null = null
 
+async function resetWorker() {
+  if (!workerPromise) {
+    return
+  }
+
+  const activePromise = workerPromise
+  workerPromise = null
+
+  try {
+    const worker = await activePromise
+    await worker.terminate()
+  } catch {
+    // Best effort reset only.
+  }
+}
+
 function normalizeOcrText(text: string) {
   return text
     .replace(/\u000c/g, '')
@@ -25,8 +44,32 @@ function normalizeOcrText(text: string) {
     .trim()
 }
 
+function formatDuration(startedAt: number) {
+  return `${Date.now() - startedAt}ms`
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_resolve, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+  }
+}
+
 async function getWorker() {
   if (!workerPromise) {
+    const startedAt = Date.now()
+    console.info('[ocr] Initializing Tesseract worker...')
+
     workerPromise = Tesseract.createWorker('eng', Tesseract.OEM.DEFAULT, {
       logger: () => undefined,
     }).then(async (worker) => {
@@ -34,11 +77,16 @@ async function getWorker() {
         preserve_interword_spaces: '1',
         tessedit_pageseg_mode: Tesseract.PSM.AUTO,
       })
+      console.info(`[ocr] Worker initialized in ${formatDuration(startedAt)}.`)
       return worker
     })
   }
 
-  return workerPromise
+  return withTimeout(
+    workerPromise,
+    WORKER_INIT_TIMEOUT_MS,
+    'OCR initialization took too long. Try again in a moment.',
+  )
 }
 
 async function getAuthorizedUser() {
@@ -55,6 +103,7 @@ async function getAuthorizedUser() {
 }
 
 export async function POST(request: Request) {
+  const requestStartedAt = Date.now()
   const authorizedUser = await getAuthorizedUser()
   if (!authorizedUser.ok) {
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
@@ -72,7 +121,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Use up to 12 images at a time.' }, { status: 400 })
   }
 
-  const worker = await getWorker()
+  console.info(`[ocr] Starting extraction for ${images.length} image(s).`)
+
+  let worker: Tesseract.Worker
+  try {
+    worker = await getWorker()
+  } catch (reason) {
+    console.error('[ocr] Worker initialization failed.', reason)
+    await resetWorker()
+    return NextResponse.json(
+      {
+        error:
+          reason instanceof Error
+            ? reason.message
+            : 'OCR initialization failed. Please try again.',
+      },
+      { status: 504 },
+    )
+  }
+
   const pages: OcrPage[] = []
   const warnings: string[] = []
 
@@ -82,12 +149,44 @@ export async function POST(request: Request) {
     }
 
     const bytes = Buffer.from(await image.arrayBuffer())
-    const result = await worker.recognize(bytes, {
-      rotateAuto: true,
-    })
+    const pageStartedAt = Date.now()
+    console.info(
+      `[ocr] Recognizing page ${index + 1}/${images.length}: ${image.name || `image-${index + 1}`}.`,
+    )
+
+    let result: Tesseract.RecognizeResult
+    try {
+      result = await withTimeout(
+        worker.recognize(bytes, {
+          rotateAuto: true,
+        }),
+        RECOGNIZE_TIMEOUT_MS,
+        `Reading ${image.name || `image ${index + 1}`} took too long. Try a tighter crop or clearer photo.`,
+      )
+    } catch (reason) {
+      console.error(
+        `[ocr] Recognition failed for ${image.name || `image-${index + 1}`} after ${formatDuration(pageStartedAt)}.`,
+        reason,
+      )
+      await resetWorker()
+      return NextResponse.json(
+        {
+          error:
+            reason instanceof Error
+              ? reason.message
+              : 'Unable to read that image. Try again with a clearer photo.',
+        },
+        { status: 504 },
+      )
+    }
+
     const text = normalizeOcrText(result.data.text ?? '')
     const confidence = Number.isFinite(result.data.confidence) ? Math.round(result.data.confidence) : 0
     const wordCount = text.split(/\s+/).filter(Boolean).length
+
+    console.info(
+      `[ocr] Finished page ${index + 1}/${images.length} in ${formatDuration(pageStartedAt)} with ${wordCount} word(s) at ${confidence}% confidence.`,
+    )
 
     if (!text) {
       warnings.push(`No readable text was found in ${image.name || `image ${index + 1}`}.`)
@@ -117,6 +216,10 @@ export async function POST(request: Request) {
       { status: 422 },
     )
   }
+
+  console.info(
+    `[ocr] Completed extraction for ${images.length} image(s) in ${formatDuration(requestStartedAt)}.`,
+  )
 
   return NextResponse.json({
     combinedText,

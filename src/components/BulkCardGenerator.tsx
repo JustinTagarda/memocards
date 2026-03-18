@@ -131,6 +131,7 @@ export function BulkCardGenerator({
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const cameraInputRef = useRef<HTMLInputElement | null>(null)
   const imageItemsRef = useRef<PendingImage[]>([])
+  const extractionProgressTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     imageItemsRef.current = imageItems
@@ -139,6 +140,9 @@ export function BulkCardGenerator({
   useEffect(
     () => () => {
       revokePreviewUrls(imageItemsRef.current)
+      if (extractionProgressTimerRef.current) {
+        window.clearInterval(extractionProgressTimerRef.current)
+      }
     },
     [],
   )
@@ -172,6 +176,42 @@ export function BulkCardGenerator({
     setOcrPages([])
     setEditingCandidateId(null)
     setProgress(null)
+  }
+
+  function stopExtractionProgress() {
+    if (!extractionProgressTimerRef.current) {
+      return
+    }
+    window.clearInterval(extractionProgressTimerRef.current)
+    extractionProgressTimerRef.current = null
+  }
+
+  function startExtractionProgress(pageCount: number) {
+    stopExtractionProgress()
+    setProgress({
+      percent: 48,
+      label: pageCount === 1 ? 'Initializing OCR for 1 image...' : `Initializing OCR for ${pageCount} images...`,
+    })
+
+    extractionProgressTimerRef.current = window.setInterval(() => {
+      setProgress((current) => {
+        const currentPercent = current?.percent ?? 48
+        const nextPercent = Math.min(currentPercent + 4, 82)
+        const nextLabel =
+          nextPercent < 62
+            ? pageCount === 1
+              ? 'Reading text from 1 image...'
+              : `Reading text from ${pageCount} images...`
+            : pageCount === 1
+              ? 'OCR is still processing 1 image...'
+              : `OCR is still processing ${pageCount} images...`
+
+        return {
+          percent: nextPercent,
+          label: nextLabel,
+        }
+      })
+    }, 1400)
   }
 
   function clearAll() {
@@ -278,12 +318,11 @@ export function BulkCardGenerator({
 
       const preparedFiles = await buildPreparedFiles()
 
-      setProgress({
-        percent: 48,
-        label: `Extracting text from ${preparedFiles.length} image${preparedFiles.length === 1 ? '' : 's'}...`,
+      startExtractionProgress(preparedFiles.length)
+      const extracted = await extractTextFromImages(preparedFiles, {
+        timeoutMs: Math.min(90000, 45000 + preparedFiles.length * 12000),
       })
-
-      const extracted = await extractTextFromImages(preparedFiles)
+      stopExtractionProgress()
       setOcrPages(extracted.pages)
       setSourceText(extracted.combinedText)
 
@@ -300,9 +339,11 @@ export function BulkCardGenerator({
       )
       setProgress(null)
     } catch (reason) {
+      stopExtractionProgress()
       clearPreview()
       setError(reason instanceof Error ? reason.message : 'Unable to generate cards from these images.')
     } finally {
+      stopExtractionProgress()
       setParsing(false)
     }
   }

@@ -1067,7 +1067,14 @@ export interface ExtractedImageTextResult {
   warnings: string[]
 }
 
-export async function extractTextFromImages(files: File[]) {
+interface ExtractTextFromImagesOptions {
+  timeoutMs?: number
+}
+
+export async function extractTextFromImages(
+  files: File[],
+  { timeoutMs = 55000 }: ExtractTextFromImagesOptions = {},
+) {
   if (files.length === 0) {
     throw new Error('Add at least one image before generating cards.')
   }
@@ -1077,10 +1084,26 @@ export async function extractTextFromImages(files: File[]) {
     formData.append('images', file, file.name)
   })
 
-  const response = await fetch('/api/cards/extract-from-images', {
-    method: 'POST',
-    body: formData,
-  })
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs)
+
+  let response: Response
+  try {
+    response = await fetch('/api/cards/extract-from-images', {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    })
+  } catch (reason) {
+    if (reason instanceof DOMException && reason.name === 'AbortError') {
+      throw new Error(
+        'Text extraction took too long. Try a clearer photo, crop the page tighter, or use fewer images.',
+      )
+    }
+    throw reason
+  } finally {
+    window.clearTimeout(timeoutId)
+  }
 
   if (!response.ok) {
     const error = (await response.json().catch(() => null)) as { error?: string } | null

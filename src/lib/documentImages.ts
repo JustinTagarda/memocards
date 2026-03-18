@@ -254,8 +254,8 @@ export async function prepareDocumentImage(
     rotation,
     enhanceScan,
     trimMargins,
-    maxDimension = 2200,
-    minDimension = 1280,
+    maxDimension = 1800,
+    minDimension = 960,
   }: DocumentImageProcessingOptions,
 ): Promise<PreparedDocumentImage> {
   const image = await loadImage(file)
