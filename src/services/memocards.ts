@@ -1053,6 +1053,43 @@ export async function importDeckBundle(
   return deckId
 }
 
+export interface ExtractedImageTextPage {
+  id: string
+  name: string
+  text: string
+  confidence: number
+  wordCount: number
+}
+
+export interface ExtractedImageTextResult {
+  combinedText: string
+  pages: ExtractedImageTextPage[]
+  warnings: string[]
+}
+
+export async function extractTextFromImages(files: File[]) {
+  if (files.length === 0) {
+    throw new Error('Add at least one image before generating cards.')
+  }
+
+  const formData = new FormData()
+  files.forEach((file) => {
+    formData.append('images', file, file.name)
+  })
+
+  const response = await fetch('/api/cards/extract-from-images', {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const error = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(error?.error ?? 'Unable to extract text from these images.')
+  }
+
+  return (await response.json()) as ExtractedImageTextResult
+}
+
 export async function requestCardAudio(
   deckId: string,
   cardId: string,

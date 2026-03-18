@@ -1,8 +1,17 @@
 'use client'
 
-import { PencilLine, Sparkles, Trash2 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import { CardForm } from './forms'
+import {
+  ArrowDown,
+  ArrowUp,
+  Camera,
+  ImagePlus,
+  PencilLine,
+  RotateCw,
+  Sparkles,
+  Trash2,
+} from 'lucide-react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { prepareDocumentImage } from '../lib/documentImages'
 import {
   parseDocumentText,
   type DocumentParseCandidate,
@@ -10,7 +19,12 @@ import {
   type DocumentParserMode,
 } from '../lib/documentParser'
 import { summarizeQuickAddDraft } from '../lib/quickAdd'
+import {
+  extractTextFromImages,
+  type ExtractedImageTextPage,
+} from '../services/memocards'
 import type { CardDraft } from '../types/models'
+import { CardForm } from './forms'
 
 interface BulkCardGeneratorProps {
   prepareDraft?: (draft: CardDraft) => CardDraft
@@ -25,11 +39,22 @@ interface PendingCandidate extends DocumentParseCandidate {
   id: string
 }
 
-function createCandidateId(index: number) {
+interface PendingImage {
+  id: string
+  file: File
+  previewUrl: string
+  rotation: number
+  enhanceScan: boolean
+  trimMargins: boolean
+}
+
+type BulkSourceMode = 'text' | 'images'
+
+function createItemId(prefix: string, index: number) {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
+    return `${prefix}-${crypto.randomUUID()}`
   }
-  return `bulk-card-${Date.now()}-${index}`
+  return `${prefix}-${Date.now()}-${index}`
 }
 
 function modeLabel(mode: DocumentParserMode) {
@@ -47,15 +72,55 @@ function modeLabel(mode: DocumentParserMode) {
   }
 }
 
+function createPendingImage(file: File, index: number): PendingImage {
+  return {
+    id: createItemId('bulk-image', index),
+    file,
+    previewUrl: URL.createObjectURL(file),
+    rotation: 0,
+    enhanceScan: true,
+    trimMargins: true,
+  }
+}
+
+function revokePreviewUrls(items: PendingImage[]) {
+  items.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+}
+
+function buildGeneratedMessage(
+  candidateCount: number,
+  parserMode: DocumentParserMode,
+  issueCount: number,
+  sourceLabel: string,
+) {
+  if (issueCount > 0) {
+    return `Generated ${candidateCount} card draft${candidateCount === 1 ? '' : 's'} from ${sourceLabel} with ${issueCount} item${issueCount === 1 ? '' : 's'} to review.`
+  }
+
+  return `Generated ${candidateCount} card draft${candidateCount === 1 ? '' : 's'} from ${sourceLabel} using ${modeLabel(parserMode)}.`
+}
+
+function buildOcrIssues(warnings: string[]): DocumentParseIssue[] {
+  return warnings.map((warning, index) => ({
+    sourceLabel: `OCR note ${index + 1}`,
+    lineNumber: index + 1,
+    content: '',
+    reason: warning,
+  }))
+}
+
 export function BulkCardGenerator({
   prepareDraft = (draft) => draft,
   onComplete,
   onSaveAll,
 }: BulkCardGeneratorProps) {
+  const [sourceMode, setSourceMode] = useState<BulkSourceMode>('text')
   const [sourceText, setSourceText] = useState('')
   const [parserMode, setParserMode] = useState<DocumentParserMode>('auto')
   const [candidates, setCandidates] = useState<PendingCandidate[]>([])
   const [issues, setIssues] = useState<DocumentParseIssue[]>([])
+  const [ocrPages, setOcrPages] = useState<ExtractedImageTextPage[]>([])
+  const [imageItems, setImageItems] = useState<PendingImage[]>([])
   const [parsing, setParsing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -63,9 +128,31 @@ export function BulkCardGenerator({
   const [progress, setProgress] = useState<{ percent: number; label: string } | null>(null)
   const [editingCandidateId, setEditingCandidateId] = useState<string | null>(null)
   const editorRef = useRef<HTMLElement | null>(null)
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
+  const cameraInputRef = useRef<HTMLInputElement | null>(null)
+  const imageItemsRef = useRef<PendingImage[]>([])
+
+  useEffect(() => {
+    imageItemsRef.current = imageItems
+  }, [imageItems])
+
+  useEffect(
+    () => () => {
+      revokePreviewUrls(imageItemsRef.current)
+    },
+    [],
+  )
 
   const hasPreview = candidates.length > 0
   const editingCandidate = candidates.find((candidate) => candidate.id === editingCandidateId) ?? null
+  const canGenerate =
+    sourceMode === 'text' ? Boolean(sourceText.trim()) : imageItems.length > 0
+  const canClear =
+    Boolean(sourceText.trim()) ||
+    imageItems.length > 0 ||
+    candidates.length > 0 ||
+    issues.length > 0 ||
+    ocrPages.length > 0
 
   useEffect(() => {
     if (!editingCandidate) {
@@ -82,11 +169,49 @@ export function BulkCardGenerator({
   function clearPreview() {
     setCandidates([])
     setIssues([])
+    setOcrPages([])
     setEditingCandidateId(null)
     setProgress(null)
   }
 
-  async function handleGenerate() {
+  function clearAll() {
+    revokePreviewUrls(imageItems)
+    setImageItems([])
+    setSourceText('')
+    clearPreview()
+    resetFeedback()
+  }
+
+  function applyParsedCandidates(
+    parsed: ReturnType<typeof parseDocumentText>,
+    sourceLabel: string,
+    extraIssues: DocumentParseIssue[] = [],
+  ) {
+    const nextIssues = [...extraIssues, ...parsed.issues]
+    setCandidates(
+      parsed.candidates.map((candidate, index) => ({
+        ...candidate,
+        draft: prepareDraft(candidate.draft),
+        id: createItemId('bulk-card', index),
+      })),
+    )
+    setIssues(nextIssues)
+    setEditingCandidateId(null)
+
+    if (parsed.candidates.length === 0) {
+      setSuccess(null)
+      setError(
+        nextIssues.length > 0
+          ? 'No card candidates were generated from that source.'
+          : 'This source did not contain any parseable question-and-answer content.',
+      )
+      return
+    }
+
+    setSuccess(buildGeneratedMessage(parsed.candidates.length, parserMode, nextIssues.length, sourceLabel))
+  }
+
+  async function handleGenerateFromText() {
     if (!sourceText.trim()) {
       setError('Paste some source text first.')
       return
@@ -98,37 +223,97 @@ export function BulkCardGenerator({
 
     try {
       const parsed = parseDocumentText(sourceText, parserMode)
-      setCandidates(
-        parsed.candidates.map((candidate, index) => ({
-          ...candidate,
-          draft: prepareDraft(candidate.draft),
-          id: createCandidateId(index),
-        })),
-      )
-      setIssues(parsed.issues)
-      setEditingCandidateId(null)
-
-      if (parsed.candidates.length === 0) {
-        setSuccess(null)
-        setError(
-          parsed.issues.length > 0
-            ? 'No card candidates were generated from that text.'
-            : 'This text did not contain any parseable question-and-answer content.',
-        )
-        return
-      }
-
-      setSuccess(
-        parsed.issues.length > 0
-          ? `Generated ${parsed.candidates.length} card draft${parsed.candidates.length === 1 ? '' : 's'} with ${parsed.issues.length} section${parsed.issues.length === 1 ? '' : 's'} to review.`
-          : `Generated ${parsed.candidates.length} card draft${parsed.candidates.length === 1 ? '' : 's'} using ${modeLabel(parserMode)}.`,
-      )
+      applyParsedCandidates(parsed, 'the pasted text')
     } catch (reason) {
       clearPreview()
       setError(reason instanceof Error ? reason.message : 'Unable to parse this text.')
     } finally {
       setParsing(false)
     }
+  }
+
+  async function buildPreparedFiles() {
+    const prepared: File[] = []
+
+    for (const [index, image] of imageItems.entries()) {
+      const percent = Math.round(10 + (index / Math.max(1, imageItems.length)) * 28)
+      setProgress({
+        percent,
+        label: `Preparing page ${index + 1} of ${imageItems.length}...`,
+      })
+
+      const nextImage = await prepareDocumentImage(image.file, {
+        rotation: image.rotation,
+        enhanceScan: image.enhanceScan,
+        trimMargins: image.trimMargins,
+      })
+
+      const fileName = image.file.name.replace(/\.[^.]+$/, '') || `document-page-${index + 1}`
+      prepared.push(
+        new File([nextImage.blob], `${fileName}-ocr.png`, {
+          type: nextImage.blob.type || 'image/png',
+          lastModified: Date.now(),
+        }),
+      )
+    }
+
+    return prepared
+  }
+
+  async function handleGenerateFromImages() {
+    if (imageItems.length === 0) {
+      setError('Take a photo or upload at least one image first.')
+      return
+    }
+
+    setParsing(true)
+    resetFeedback()
+    clearPreview()
+
+    try {
+      setProgress({
+        percent: 8,
+        label: `Preparing ${imageItems.length} image${imageItems.length === 1 ? '' : 's'}...`,
+      })
+
+      const preparedFiles = await buildPreparedFiles()
+
+      setProgress({
+        percent: 48,
+        label: `Extracting text from ${preparedFiles.length} image${preparedFiles.length === 1 ? '' : 's'}...`,
+      })
+
+      const extracted = await extractTextFromImages(preparedFiles)
+      setOcrPages(extracted.pages)
+      setSourceText(extracted.combinedText)
+
+      setProgress({
+        percent: 74,
+        label: 'Parsing extracted text into cards...',
+      })
+
+      const parsed = parseDocumentText(extracted.combinedText, parserMode)
+      applyParsedCandidates(
+        parsed,
+        `${preparedFiles.length} image${preparedFiles.length === 1 ? '' : 's'}`,
+        buildOcrIssues(extracted.warnings),
+      )
+      setProgress(null)
+    } catch (reason) {
+      clearPreview()
+      setError(reason instanceof Error ? reason.message : 'Unable to generate cards from these images.')
+    } finally {
+      setParsing(false)
+    }
+  }
+
+  async function handleGenerate() {
+    if (sourceMode === 'images') {
+      await handleGenerateFromImages()
+      return
+    }
+
+    await handleGenerateFromText()
   }
 
   async function handleSaveAll() {
@@ -152,13 +337,12 @@ export function BulkCardGenerator({
         },
       )
 
-      setCandidates([])
-      setIssues([])
-      setEditingCandidateId(null)
-      setSuccess(`Saved ${candidates.length} card${candidates.length === 1 ? '' : 's'}. Returning to the deck...`)
+      const savedCount = candidates.length
+      clearAll()
+      setSuccess(`Saved ${savedCount} card${savedCount === 1 ? '' : 's'}. Returning to the deck...`)
       setProgress({
         percent: 100,
-        label: `Saved ${candidates.length} card${candidates.length === 1 ? '' : 's'}. Returning to the deck...`,
+        label: `Saved ${savedCount} card${savedCount === 1 ? '' : 's'}. Returning to the deck...`,
       })
       await new Promise((resolve) => window.setTimeout(resolve, 450))
       onComplete()
@@ -170,25 +354,267 @@ export function BulkCardGenerator({
     }
   }
 
+  function replaceImageItems(nextItems: PendingImage[]) {
+    setImageItems(nextItems)
+  }
+
+  function appendImageFiles(files: FileList | File[]) {
+    const incoming = Array.from(files).filter((file) => file.type.startsWith('image/'))
+
+    if (incoming.length === 0) {
+      setError('Only image files can be used for document capture.')
+      return
+    }
+
+    const nextTotal = imageItems.length + incoming.length
+    if (nextTotal > 12) {
+      setError('Use up to 12 images at a time.')
+      return
+    }
+
+    resetFeedback()
+    clearPreview()
+    setSourceMode('images')
+    replaceImageItems([
+      ...imageItems,
+      ...incoming.map((file, index) => createPendingImage(file, imageItems.length + index)),
+    ])
+  }
+
   return (
     <section className="filters-card quick-add-card bulk-card-generator">
       {!hasPreview && (
         <>
-          <label className="field bulk-card-generator__source">
-            <span>Source text</span>
-            <textarea
-              placeholder="Paste copied text here..."
-              rows={14}
-              value={sourceText}
-              onChange={(event) => {
-                setSourceText(event.target.value)
-                if (candidates.length > 0 || issues.length > 0) {
-                  clearPreview()
-                }
+          <div className="bulk-card-generator__source-mode">
+            <button
+              aria-pressed={sourceMode === 'text'}
+              className={sourceMode === 'text' ? 'choice-pill choice-pill--selected' : 'choice-pill'}
+              type="button"
+              onClick={() => {
+                setSourceMode('text')
                 resetFeedback()
               }}
-            />
-          </label>
+            >
+              Paste text
+            </button>
+            <button
+              aria-pressed={sourceMode === 'images'}
+              className={sourceMode === 'images' ? 'choice-pill choice-pill--selected' : 'choice-pill'}
+              type="button"
+              onClick={() => {
+                setSourceMode('images')
+                resetFeedback()
+              }}
+            >
+              Photos / Images
+            </button>
+          </div>
+
+          {sourceMode === 'text' ? (
+            <label className="field bulk-card-generator__source">
+              <span>Source text</span>
+              <textarea
+                placeholder="Paste copied text here..."
+                rows={14}
+                value={sourceText}
+                onChange={(event) => {
+                  setSourceText(event.target.value)
+                  if (candidates.length > 0 || issues.length > 0 || ocrPages.length > 0) {
+                    clearPreview()
+                  }
+                  resetFeedback()
+                }}
+              />
+            </label>
+          ) : (
+            <div className="bulk-card-generator__image-source">
+              <input
+                ref={cameraInputRef}
+                accept="image/*"
+                capture="environment"
+                className="bulk-card-generator__hidden-input"
+                type="file"
+                onChange={(event) => {
+                  if (event.target.files) {
+                    appendImageFiles(event.target.files)
+                  }
+                  event.currentTarget.value = ''
+                }}
+              />
+              <input
+                ref={imageInputRef}
+                accept="image/*"
+                className="bulk-card-generator__hidden-input"
+                multiple
+                type="file"
+                onChange={(event) => {
+                  if (event.target.files) {
+                    appendImageFiles(event.target.files)
+                  }
+                  event.currentTarget.value = ''
+                }}
+              />
+
+              <div className="bulk-card-generator__image-toolbar">
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
+                >
+                  <Camera size={16} />
+                  {imageItems.length > 0 ? 'Add photo' : 'Take photo'}
+                </button>
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                >
+                  <ImagePlus size={16} />
+                  {imageItems.length > 0 ? 'Add images' : 'Upload images'}
+                </button>
+              </div>
+
+              {imageItems.length > 0 ? (
+                <div className="bulk-card-generator__image-list">
+                  {imageItems.map((image, index) => (
+                    <article key={image.id} className="preview-card bulk-card-generator__image-card">
+                      <div className="bulk-card-generator__image-preview">
+                        <img
+                          alt={`Document page ${index + 1}`}
+                          src={image.previewUrl}
+                          style={{ '--rotation': `${image.rotation}deg` } as CSSProperties}
+                        />
+                      </div>
+
+                      <div className="bulk-card-generator__image-copy">
+                        <div className="panel-heading">
+                          <strong>Page {index + 1}</strong>
+                          <small>{image.file.name}</small>
+                        </div>
+
+                        <div className="editor-shell__meta bulk-card-generator__image-meta">
+                          <span className="status-pill">{image.rotation}°</span>
+                          {image.enhanceScan && <span className="status-pill">Enhance scan</span>}
+                          {image.trimMargins && <span className="status-pill">Trim margins</span>}
+                        </div>
+
+                        <div className="bulk-card-generator__image-buttons">
+                          <button
+                            className="ghost-button ghost-button--inline"
+                            disabled={index === 0 || parsing || saving}
+                            type="button"
+                            onClick={() => {
+                              if (index === 0) {
+                                return
+                              }
+                              const next = [...imageItems]
+                              const [item] = next.splice(index, 1)
+                              if (!item) {
+                                return
+                              }
+                              next.splice(index - 1, 0, item)
+                              replaceImageItems(next)
+                            }}
+                          >
+                            <ArrowUp size={16} />
+                            Move up
+                          </button>
+                          <button
+                            className="ghost-button ghost-button--inline"
+                            disabled={index === imageItems.length - 1 || parsing || saving}
+                            type="button"
+                            onClick={() => {
+                              if (index === imageItems.length - 1) {
+                                return
+                              }
+                              const next = [...imageItems]
+                              const [item] = next.splice(index, 1)
+                              if (!item) {
+                                return
+                              }
+                              next.splice(index + 1, 0, item)
+                              replaceImageItems(next)
+                            }}
+                          >
+                            <ArrowDown size={16} />
+                            Move down
+                          </button>
+                          <button
+                            className="ghost-button ghost-button--inline"
+                            disabled={parsing || saving}
+                            type="button"
+                            onClick={() => {
+                              replaceImageItems(
+                                imageItems.map((item) =>
+                                  item.id === image.id
+                                    ? { ...item, rotation: (item.rotation + 90) % 360 }
+                                    : item,
+                                ),
+                              )
+                            }}
+                          >
+                            <RotateCw size={16} />
+                            Rotate
+                          </button>
+                          <button
+                            className="button-link button-link--danger"
+                            disabled={parsing || saving}
+                            type="button"
+                            onClick={() => {
+                              URL.revokeObjectURL(image.previewUrl)
+                              replaceImageItems(imageItems.filter((item) => item.id !== image.id))
+                            }}
+                          >
+                            <Trash2 size={16} />
+                            Remove
+                          </button>
+                        </div>
+
+                        <div className="checkbox-row checkbox-row--deck bulk-card-generator__image-toggles">
+                          <label>
+                            <input
+                              checked={image.enhanceScan}
+                              type="checkbox"
+                              onChange={(event) => {
+                                replaceImageItems(
+                                  imageItems.map((item) =>
+                                    item.id === image.id
+                                      ? { ...item, enhanceScan: event.target.checked }
+                                      : item,
+                                  ),
+                                )
+                              }}
+                            />
+                            Enhance scan
+                          </label>
+                          <label>
+                            <input
+                              checked={image.trimMargins}
+                              type="checkbox"
+                              onChange={(event) => {
+                                replaceImageItems(
+                                  imageItems.map((item) =>
+                                    item.id === image.id
+                                      ? { ...item, trimMargins: event.target.checked }
+                                      : item,
+                                  ),
+                                )
+                              }}
+                            />
+                            Trim margins
+                          </label>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="hint-text">
+                  Capture one or more document pages. Printed text works best, and the images will be merged in the order shown here.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="field-grid bulk-card-generator__controls">
             <label className="field quick-add-toolbar__type">
@@ -197,7 +623,7 @@ export function BulkCardGenerator({
                 value={parserMode}
                 onChange={(event) => {
                   setParserMode(event.target.value as DocumentParserMode)
-                  if (candidates.length > 0 || issues.length > 0) {
+                  if (candidates.length > 0 || issues.length > 0 || ocrPages.length > 0) {
                     clearPreview()
                   }
                   resetFeedback()
@@ -232,7 +658,7 @@ export function BulkCardGenerator({
       <div className="modal-actions quick-add-actions bulk-card-generator__actions bulk-card-generator__actions--top">
         <button
           className="primary-button"
-          disabled={hasPreview || parsing || saving || !sourceText.trim()}
+          disabled={hasPreview || parsing || saving || !canGenerate}
           type="button"
           onClick={() => {
             void handleGenerate()
@@ -244,13 +670,9 @@ export function BulkCardGenerator({
 
         <button
           className="ghost-button"
-          disabled={saving || (!sourceText.trim() && candidates.length === 0)}
+          disabled={saving || !canClear}
           type="button"
-          onClick={() => {
-            setSourceText('')
-            clearPreview()
-            resetFeedback()
-          }}
+          onClick={clearAll}
         >
           Clear
         </button>
@@ -281,9 +703,7 @@ export function BulkCardGenerator({
               onSubmit={async (draft) => {
                 setCandidates((current) =>
                   current.map((candidate) =>
-                    candidate.id === editingCandidate.id
-                      ? { ...candidate, draft }
-                      : candidate,
+                    candidate.id === editingCandidate.id ? { ...candidate, draft } : candidate,
                   ),
                 )
                 setEditingCandidateId(null)
@@ -308,7 +728,8 @@ export function BulkCardGenerator({
                 <article key={candidate.id} className="activity-item document-import-item">
                   <div className="quick-add-preview__meta">
                     <small>
-                      {candidate.draft.type.replace('_', ' ')} · {candidate.confidence === 'high' ? 'High confidence' : 'Review suggested'}
+                      {candidate.draft.type.replace('_', ' ')} ·{' '}
+                      {candidate.confidence === 'high' ? 'High confidence' : 'Review suggested'}
                     </small>
                   </div>
 
@@ -361,7 +782,7 @@ export function BulkCardGenerator({
           <strong>Needs review</strong>
           <div className="list-stack">
             {issues.map((issue) => (
-              <div key={`${issue.sourceLabel}:${issue.lineNumber}:${issue.content}`} className="activity-item">
+              <div key={`${issue.sourceLabel}:${issue.lineNumber}:${issue.reason}`} className="activity-item">
                 <strong>{issue.sourceLabel}</strong>
                 <small>{issue.reason}</small>
               </div>

@@ -86,9 +86,6 @@ export function BulkCardGeneratorPage() {
           <div className="editor-shell__copy">
             <p className="eyebrow">Card</p>
             <h1>Create multiple cards for {activeDeck.title}</h1>
-            <p>
-              Paste copied text, let the parser build draft cards, then review, edit, or remove anything before saving the whole batch back to this deck.
-            </p>
           </div>
 
           <div className="editor-shell__meta">

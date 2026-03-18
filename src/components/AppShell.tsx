@@ -1,8 +1,8 @@
 'use client'
 
-import { Home, LoaderCircle, LogOut } from 'lucide-react'
+import { ArrowLeft, Home, LoaderCircle, LogOut } from 'lucide-react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, type PropsWithChildren } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { useUserProfile } from '../hooks/useMemoCards'
@@ -11,6 +11,7 @@ export function AppShell({ children }: PropsWithChildren) {
   const { user, signOutUser } = useAuth()
   const { data: profile, loading: profileLoading } = useUserProfile(user?.id)
   const pathname = usePathname()
+  const router = useRouter()
   const [avatarFailed, setAvatarFailed] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement | null>(null)
@@ -70,71 +71,145 @@ export function AppShell({ children }: PropsWithChildren) {
 
   return (
     <div className="app-shell">
-      <header className="app-topbar">
-        <div className="app-topbar__brand">
-          <Link className="brand-link" href="/app">
-            <span className="brand-mark">MC</span>
-            <span className="brand-copy">
-              <strong>MemoCards</strong>
-              <small>Private study space</small>
-            </span>
-          </Link>
-        </div>
+      {isHome ? (
+        <header className="app-topbar">
+          <div className="app-topbar__brand">
+            <Link className="brand-link" href="/app">
+              <span className="brand-mark">MC</span>
+              <span className="brand-copy">
+                <strong>MemoCards</strong>
+                <small>Private study space</small>
+              </span>
+            </Link>
+          </div>
 
-        <div className={controlsClassName}>
-          {!isHome ? (
-            <nav className="topbar-nav" aria-label="Primary">
-              <Link aria-label="Home" className="nav-link" href="/app">
-                <Home size={16} />
-                <span className="topbar-button__label">Home</span>
-              </Link>
-            </nav>
-          ) : null}
+          <div className={controlsClassName}>
+            <div className="app-topbar__meta">
+              <div className="topbar-status" aria-label="Study summary">
+                <span className="status-pill status-pill--warm">{streak} day streak</span>
+                <span className="status-pill">{dueToday} due today</span>
+              </div>
 
-          <div className="app-topbar__meta">
-            <div className="topbar-status" aria-label="Study summary">
-              <span className="status-pill status-pill--warm">{streak} day streak</span>
-              <span className="status-pill">{dueToday} due today</span>
-            </div>
+              <div className="topbar-user topbar-user--menu" ref={userMenuRef}>
+                <button
+                  aria-expanded={isUserMenuOpen}
+                  aria-haspopup="menu"
+                  aria-label="Open account menu"
+                  className="avatar-shell avatar-shell--button"
+                  type="button"
+                  onClick={() => setIsUserMenuOpen((current) => !current)}
+                >
+                  {profileLoading ? (
+                    <LoaderCircle className="avatar-spinner" size={15} />
+                  ) : profile?.photoURL && !avatarFailed ? (
+                    <img alt="" src={profile.photoURL} onError={() => setAvatarFailed(true)} />
+                  ) : (
+                    <span>{avatarInitial}</span>
+                  )}
+                </button>
 
-            <div className="topbar-user topbar-user--menu" ref={userMenuRef}>
-              <button
-                aria-expanded={isUserMenuOpen}
-                aria-haspopup="menu"
-                aria-label="Open account menu"
-                className="avatar-shell avatar-shell--button"
-                type="button"
-                onClick={() => setIsUserMenuOpen((current) => !current)}
-              >
-                {profileLoading ? (
-                  <LoaderCircle className="avatar-spinner" size={15} />
-                ) : profile?.photoURL && !avatarFailed ? (
-                  <img alt="" src={profile.photoURL} onError={() => setAvatarFailed(true)} />
-                ) : (
-                  <span>{avatarInitial}</span>
-                )}
-              </button>
-
-              {isUserMenuOpen ? (
-                <div aria-label="Account menu" className="topbar-menu" role="menu">
-                  <button
-                    className="topbar-menu__item"
-                    role="menuitem"
-                    type="button"
-                    onClick={() => {
-                      setIsUserMenuOpen(false)
-                      void signOutUser()
-                    }}
-                  >
-                    <LogOut size={16} />
-                    <span>Log out</span>
-                  </button>
-                </div>
-              ) : null}
+                {isUserMenuOpen ? (
+                  <div aria-label="Account menu" className="topbar-menu" role="menu">
+                    <button
+                      className="topbar-menu__item"
+                      role="menuitem"
+                      type="button"
+                      onClick={() => {
+                        setIsUserMenuOpen(false)
+                        void signOutUser()
+                      }}
+                    >
+                      <LogOut size={16} />
+                      <span>Log out</span>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
+        </header>
+      ) : (
+        <div className="app-topbar-row app-topbar-row--subpage">
+          <button
+            aria-label="Go back"
+            className="topbar-back-button ghost-button"
+            type="button"
+            onClick={() => {
+              if (typeof window !== 'undefined' && window.history.length > 1) {
+                router.back()
+                return
+              }
+              router.push('/app')
+            }}
+          >
+            <ArrowLeft size={18} />
+          </button>
+
+          <header className="app-topbar app-topbar--subpage">
+            <div className="app-topbar__brand">
+              <Link className="brand-link" href="/app">
+                <span className="brand-mark">MC</span>
+                <span className="brand-copy">
+                  <strong>MemoCards</strong>
+                  <small>Private study space</small>
+                </span>
+              </Link>
+            </div>
+
+            <div className={controlsClassName}>
+              <nav className="topbar-nav" aria-label="Primary">
+                <Link aria-label="Home" className="nav-link" href="/app">
+                  <Home size={16} />
+                  <span className="topbar-button__label">Home</span>
+                </Link>
+              </nav>
+
+              <div className="app-topbar__meta">
+                <div className="topbar-status" aria-label="Study summary">
+                  <span className="status-pill status-pill--warm">{streak} day streak</span>
+                  <span className="status-pill">{dueToday} due today</span>
+                </div>
+
+                <div className="topbar-user topbar-user--menu" ref={userMenuRef}>
+                  <button
+                    aria-expanded={isUserMenuOpen}
+                    aria-haspopup="menu"
+                    aria-label="Open account menu"
+                    className="avatar-shell avatar-shell--button"
+                    type="button"
+                    onClick={() => setIsUserMenuOpen((current) => !current)}
+                  >
+                    {profileLoading ? (
+                      <LoaderCircle className="avatar-spinner" size={15} />
+                    ) : profile?.photoURL && !avatarFailed ? (
+                      <img alt="" src={profile.photoURL} onError={() => setAvatarFailed(true)} />
+                    ) : (
+                      <span>{avatarInitial}</span>
+                    )}
+                  </button>
+
+                  {isUserMenuOpen ? (
+                    <div aria-label="Account menu" className="topbar-menu" role="menu">
+                      <button
+                        className="topbar-menu__item"
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          setIsUserMenuOpen(false)
+                          void signOutUser()
+                        }}
+                      >
+                        <LogOut size={16} />
+                        <span>Log out</span>
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </header>
         </div>
-      </header>
+      )}
 
       <main className="app-main">
         {children}
