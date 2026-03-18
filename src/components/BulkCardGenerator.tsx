@@ -423,7 +423,11 @@ export function BulkCardGenerator({
   }
 
   return (
-    <section className="filters-card quick-add-card bulk-card-generator">
+    <section
+      className={`filters-card quick-add-card bulk-card-generator${
+        hasPreview ? ' bulk-card-generator--has-preview' : ''
+      }`}
+    >
       {!hasPreview && (
         <>
           <div className="bulk-card-generator__source-mode">

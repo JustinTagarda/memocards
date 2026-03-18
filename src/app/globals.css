@@ -1491,6 +1491,10 @@ input[type='file'] {
   gap: var(--space-4);
 }
 
+.bulk-card-generator--has-preview {
+  min-height: clamp(30rem, calc(100dvh - 15rem), 54rem);
+}
+
 .bulk-card-generator__source-mode {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1639,6 +1643,17 @@ input[type='file'] {
 
 .bulk-card-generator__summary-line--prompt {
   font-weight: 700;
+}
+
+.bulk-card-generator--has-preview .document-import-preview {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: clamp(18rem, calc(100dvh - 25rem), 38rem);
+}
+
+.bulk-card-generator--has-preview .document-import-preview .list-stack--scroll {
+  max-height: none;
+  min-height: 100%;
 }
 
 @media (max-width: 25.75rem) {

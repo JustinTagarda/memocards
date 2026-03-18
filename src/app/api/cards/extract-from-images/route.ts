@@ -1,3 +1,5 @@
+import { access, mkdir } from 'node:fs/promises'
+import path from 'node:path'
 import { NextResponse } from 'next/server'
 import Tesseract from 'tesseract.js'
 import { isLocalDevBypassEnabled } from '../../../../lib/devBypass'
@@ -8,6 +10,16 @@ export const maxDuration = 60
 
 const WORKER_INIT_TIMEOUT_MS = 20000
 const RECOGNIZE_TIMEOUT_MS = 30000
+const OCR_CACHE_DIR = path.join(process.cwd(), '.cache', 'tesseract')
+const TESSERACT_WORKER_PATH = path.join(
+  process.cwd(),
+  'node_modules',
+  'tesseract.js',
+  'src',
+  'worker-script',
+  'node',
+  'index.js',
+)
 
 type OcrPage = {
   id: string
@@ -65,21 +77,36 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
   }
 }
 
+async function ensureOcrRuntimePaths() {
+  await access(TESSERACT_WORKER_PATH).catch(() => {
+    throw new Error(`OCR worker script was not found at ${TESSERACT_WORKER_PATH}.`)
+  })
+  await mkdir(OCR_CACHE_DIR, { recursive: true })
+}
+
 async function getWorker() {
   if (!workerPromise) {
     const startedAt = Date.now()
     console.info('[ocr] Initializing Tesseract worker...')
 
-    workerPromise = Tesseract.createWorker('eng', Tesseract.OEM.DEFAULT, {
-      logger: () => undefined,
-    }).then(async (worker) => {
+    workerPromise = (async () => {
+      await ensureOcrRuntimePaths()
+      console.info(`[ocr] Using worker path: ${TESSERACT_WORKER_PATH}`)
+      console.info(`[ocr] Using cache path: ${OCR_CACHE_DIR}`)
+
+      const worker = await Tesseract.createWorker('eng', Tesseract.OEM.DEFAULT, {
+        logger: () => undefined,
+        workerPath: TESSERACT_WORKER_PATH,
+        cachePath: OCR_CACHE_DIR,
+      })
+
       await worker.setParameters({
         preserve_interword_spaces: '1',
         tessedit_pageseg_mode: Tesseract.PSM.AUTO,
       })
       console.info(`[ocr] Worker initialized in ${formatDuration(startedAt)}.`)
       return worker
-    })
+    })()
   }
 
   return withTimeout(
