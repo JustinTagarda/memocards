@@ -32,6 +32,32 @@ type OcrPage = {
 
 let workerPromise: Promise<Tesseract.Worker> | null = null
 
+function createRequestId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  return `ocr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function logOcrInfo(requestId: string, message: string, details?: Record<string, unknown>) {
+  if (details) {
+    console.info(`[ocr:${requestId}] ${message}`, details)
+    return
+  }
+
+  console.info(`[ocr:${requestId}] ${message}`)
+}
+
+function logOcrError(requestId: string, message: string, details?: unknown) {
+  if (typeof details === 'undefined') {
+    console.error(`[ocr:${requestId}] ${message}`)
+    return
+  }
+
+  console.error(`[ocr:${requestId}] ${message}`, details)
+}
+
 async function resetWorker() {
   if (!workerPromise) {
     return
@@ -92,19 +118,25 @@ async function ensureOcrRuntimePaths(workerPath: string) {
   await mkdir(OCR_CACHE_DIR, { recursive: true })
 }
 
-async function getWorker() {
+async function getWorker(requestId: string) {
   if (!workerPromise) {
     const startedAt = Date.now()
-    console.info('[ocr] Initializing Tesseract worker...')
+    logOcrInfo(requestId, 'Initializing Tesseract worker.')
 
     workerPromise = (async () => {
       const workerPath = await resolveWorkerScriptPath()
       await ensureOcrRuntimePaths(workerPath)
-      console.info(`[ocr] Using worker path: ${workerPath}`)
-      console.info(`[ocr] Using cache path: ${OCR_CACHE_DIR}`)
+      logOcrInfo(requestId, 'Using OCR runtime paths.', {
+        workerPath,
+        cachePath: OCR_CACHE_DIR,
+      })
 
       const worker = await Tesseract.createWorker('eng', Tesseract.OEM.DEFAULT, {
-        logger: () => undefined,
+        logger: (event) => {
+          const progress =
+            typeof event.progress === 'number' ? `${Math.round(event.progress * 100)}%` : 'n/a'
+          console.info(`[ocr-worker:${requestId}] ${event.status} (${progress})`)
+        },
         workerPath,
         cachePath: OCR_CACHE_DIR,
       })
@@ -113,9 +145,11 @@ async function getWorker() {
         preserve_interword_spaces: '1',
         tessedit_pageseg_mode: Tesseract.PSM.AUTO,
       })
-      console.info(`[ocr] Worker initialized in ${formatDuration(startedAt)}.`)
+      logOcrInfo(requestId, `Worker initialized in ${formatDuration(startedAt)}.`)
       return worker
     })()
+  } else {
+    logOcrInfo(requestId, 'Reusing cached Tesseract worker.')
   }
 
   return withTimeout(
@@ -140,12 +174,36 @@ async function getAuthorizedUser() {
 
 export async function POST(request: Request) {
   const requestStartedAt = Date.now()
+  const requestId = request.headers.get('x-ocr-request-id')?.trim() || createRequestId()
   const authorizedUser = await getAuthorizedUser()
   if (!authorizedUser.ok) {
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
   }
 
-  const formData = await request.formData()
+  logOcrInfo(requestId, 'OCR request accepted.', {
+    contentLength: request.headers.get('content-length'),
+    contentType: request.headers.get('content-type'),
+    userAgent: request.headers.get('user-agent'),
+  })
+
+  let formData: FormData
+  const formDataStartedAt = Date.now()
+  try {
+    formData = await request.formData()
+  } catch (reason) {
+    logOcrError(requestId, `Failed to parse form data after ${formatDuration(formDataStartedAt)}.`, reason)
+    return NextResponse.json(
+      {
+        requestId,
+        stage: 'form_data',
+        error: 'Unable to read the uploaded image data.',
+      },
+      { status: 400 },
+    )
+  }
+
+  logOcrInfo(requestId, `Parsed form data in ${formatDuration(formDataStartedAt)}.`)
+
   const rawImages = formData.getAll('images')
   const images = rawImages.filter((value): value is File => value instanceof File)
 
@@ -157,16 +215,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Use up to 12 images at a time.' }, { status: 400 })
   }
 
-  console.info(`[ocr] Starting extraction for ${images.length} image(s).`)
+  logOcrInfo(requestId, `Starting extraction for ${images.length} image(s).`, {
+    images: images.map((image, index) => ({
+      index: index + 1,
+      name: image.name || `image-${index + 1}`,
+      type: image.type,
+      size: image.size,
+    })),
+  })
 
   let worker: Tesseract.Worker
   try {
-    worker = await getWorker()
+    worker = await getWorker(requestId)
   } catch (reason) {
-    console.error('[ocr] Worker initialization failed.', reason)
+    logOcrError(requestId, 'Worker initialization failed.', reason)
     await resetWorker()
     return NextResponse.json(
       {
+        requestId,
+        stage: 'worker_init',
         error:
           reason instanceof Error
             ? reason.message
@@ -186,8 +253,12 @@ export async function POST(request: Request) {
 
     const bytes = Buffer.from(await image.arrayBuffer())
     const pageStartedAt = Date.now()
-    console.info(
-      `[ocr] Recognizing page ${index + 1}/${images.length}: ${image.name || `image-${index + 1}`}.`,
+    logOcrInfo(
+      requestId,
+      `Recognizing page ${index + 1}/${images.length}: ${image.name || `image-${index + 1}`}.`,
+      {
+        byteLength: bytes.byteLength,
+      },
     )
 
     let result: Tesseract.RecognizeResult
@@ -200,13 +271,16 @@ export async function POST(request: Request) {
         `Reading ${image.name || `image ${index + 1}`} took too long. Try a tighter crop or clearer photo.`,
       )
     } catch (reason) {
-      console.error(
-        `[ocr] Recognition failed for ${image.name || `image-${index + 1}`} after ${formatDuration(pageStartedAt)}.`,
+      logOcrError(
+        requestId,
+        `Recognition failed for ${image.name || `image-${index + 1}`} after ${formatDuration(pageStartedAt)}.`,
         reason,
       )
       await resetWorker()
       return NextResponse.json(
         {
+          requestId,
+          stage: 'recognize',
           error:
             reason instanceof Error
               ? reason.message
@@ -220,8 +294,13 @@ export async function POST(request: Request) {
     const confidence = Number.isFinite(result.data.confidence) ? Math.round(result.data.confidence) : 0
     const wordCount = text.split(/\s+/).filter(Boolean).length
 
-    console.info(
-      `[ocr] Finished page ${index + 1}/${images.length} in ${formatDuration(pageStartedAt)} with ${wordCount} word(s) at ${confidence}% confidence.`,
+    logOcrInfo(
+      requestId,
+      `Finished page ${index + 1}/${images.length} in ${formatDuration(pageStartedAt)}.`,
+      {
+        wordCount,
+        confidence,
+      },
     )
 
     if (!text) {
@@ -245,19 +324,27 @@ export async function POST(request: Request) {
   const combinedText = pages.map((page) => page.text).join('\n\n')
 
   if (!combinedText.trim()) {
+    logOcrInfo(requestId, `OCR finished without readable text after ${formatDuration(requestStartedAt)}.`, {
+      warnings: warnings.length,
+    })
     return NextResponse.json(
       {
+        requestId,
+        stage: 'recognize',
         error: warnings[0] ?? 'No readable text was found in the selected images.',
       },
       { status: 422 },
     )
   }
 
-  console.info(
-    `[ocr] Completed extraction for ${images.length} image(s) in ${formatDuration(requestStartedAt)}.`,
-  )
+  logOcrInfo(requestId, `Completed extraction for ${images.length} image(s) in ${formatDuration(requestStartedAt)}.`, {
+    pages: pages.length,
+    warnings: warnings.length,
+    combinedLength: combinedText.length,
+  })
 
   return NextResponse.json({
+    requestId,
     combinedText,
     pages,
     warnings,

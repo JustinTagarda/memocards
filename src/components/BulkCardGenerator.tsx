@@ -21,6 +21,7 @@ import {
 } from '../lib/documentParser'
 import { summarizeQuickAddDraft } from '../lib/quickAdd'
 import {
+  createOcrRequestId,
   extractTextFromImages,
   type ExtractedImageTextPage,
 } from '../services/memocards'
@@ -194,6 +195,24 @@ function buildOcrIssues(warnings: string[]): DocumentParseIssue[] {
     content: '',
     reason: warning,
   }))
+}
+
+function logBulkOcrInfo(requestId: string, message: string, details?: Record<string, unknown>) {
+  if (details) {
+    console.info(`[bulk-ocr:${requestId}] ${message}`, details)
+    return
+  }
+
+  console.info(`[bulk-ocr:${requestId}] ${message}`)
+}
+
+function logBulkOcrError(requestId: string, message: string, details?: unknown) {
+  if (typeof details === 'undefined') {
+    console.error(`[bulk-ocr:${requestId}] ${message}`)
+    return
+  }
+
+  console.error(`[bulk-ocr:${requestId}] ${message}`, details)
 }
 
 export function BulkCardGenerator({
@@ -460,7 +479,7 @@ export function BulkCardGenerator({
     }
   }
 
-  async function buildPreparedFiles() {
+  async function buildPreparedFiles(requestId: string) {
     const prepared: File[] = []
 
     for (const [index, image] of imageItems.entries()) {
@@ -470,6 +489,7 @@ export function BulkCardGenerator({
         label: `Preparing page ${index + 1} of ${imageItems.length}...`,
       })
 
+      const pageStartedAt = Date.now()
       const nextImage = await prepareDocumentImage(image.file, {
         rotation: image.rotation,
         manualCrop: image.manualCrop,
@@ -478,12 +498,24 @@ export function BulkCardGenerator({
       })
 
       const fileName = image.file.name.replace(/\.[^.]+$/, '') || `document-page-${index + 1}`
-      prepared.push(
-        new File([nextImage.blob], `${fileName}-ocr.png`, {
-          type: nextImage.blob.type || 'image/png',
-          lastModified: Date.now(),
-        }),
-      )
+      const preparedFile = new File([nextImage.blob], `${fileName}-ocr.png`, {
+        type: nextImage.blob.type || 'image/png',
+        lastModified: Date.now(),
+      })
+      prepared.push(preparedFile)
+      logBulkOcrInfo(requestId, `Prepared page ${index + 1}/${imageItems.length}.`, {
+        sourceName: image.file.name,
+        sourceSize: image.file.size,
+        preparedName: preparedFile.name,
+        preparedSize: preparedFile.size,
+        width: nextImage.width,
+        height: nextImage.height,
+        rotation: image.rotation,
+        manualCrop: image.manualCrop,
+        enhanceScan: image.enhanceScan,
+        trimMargins: image.trimMargins,
+        elapsedMs: Date.now() - pageStartedAt,
+      })
     }
 
     return prepared
@@ -495,23 +527,45 @@ export function BulkCardGenerator({
       return
     }
 
+    const requestId = createOcrRequestId()
     setParsing(true)
     resetFeedback()
     clearPreview()
 
     try {
+      logBulkOcrInfo(requestId, `Starting OCR generation for ${imageItems.length} image(s).`, {
+        parserMode,
+        images: imageItems.map((image, index) => ({
+          index: index + 1,
+          name: image.file.name,
+          size: image.file.size,
+          type: image.file.type,
+          rotation: image.rotation,
+          manualCrop: image.manualCrop,
+          enhanceScan: image.enhanceScan,
+          trimMargins: image.trimMargins,
+        })),
+      })
+
       setProgress({
         percent: 8,
         label: `Preparing ${imageItems.length} image${imageItems.length === 1 ? '' : 's'}...`,
       })
 
-      const preparedFiles = await buildPreparedFiles()
+      const preparedFiles = await buildPreparedFiles(requestId)
 
       startExtractionProgress(preparedFiles.length)
       const extracted = await extractTextFromImages(preparedFiles, {
+        requestId,
         timeoutMs: Math.min(170000, 100000 + preparedFiles.length * 30000),
       })
       stopExtractionProgress()
+      logBulkOcrInfo(requestId, 'Received OCR extraction result.', {
+        serverRequestId: extracted.requestId ?? null,
+        pageCount: extracted.pages.length,
+        warningCount: extracted.warnings.length,
+        combinedLength: extracted.combinedText.length,
+      })
       setOcrPages(extracted.pages)
       setSourceText(extracted.combinedText)
 
@@ -526,10 +580,15 @@ export function BulkCardGenerator({
         `${preparedFiles.length} image${preparedFiles.length === 1 ? '' : 's'}`,
         buildOcrIssues(extracted.warnings),
       )
+      logBulkOcrInfo(requestId, 'Parsed OCR text into card drafts.', {
+        candidateCount: parsed.candidates.length,
+        issueCount: parsed.issues.length + extracted.warnings.length,
+      })
       setProgress(null)
     } catch (reason) {
       stopExtractionProgress()
       clearPreview()
+      logBulkOcrError(requestId, 'Image-based card generation failed.', reason)
       setError(reason instanceof Error ? reason.message : 'Unable to generate cards from these images.')
     } finally {
       stopExtractionProgress()

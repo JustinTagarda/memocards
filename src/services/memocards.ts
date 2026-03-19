@@ -1062,6 +1062,7 @@ export interface ExtractedImageTextPage {
 }
 
 export interface ExtractedImageTextResult {
+  requestId?: string
   combinedText: string
   pages: ExtractedImageTextPage[]
   warnings: string[]
@@ -1069,19 +1070,63 @@ export interface ExtractedImageTextResult {
 
 interface ExtractTextFromImagesOptions {
   timeoutMs?: number
+  requestId?: string
+}
+
+interface ExtractTextFromImagesErrorResponse {
+  error?: string
+  requestId?: string
+  stage?: string
+}
+
+export function createOcrRequestId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  return `ocr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function logOcrClientInfo(requestId: string, message: string, details?: Record<string, unknown>) {
+  if (details) {
+    console.info(`[ocr-client:${requestId}] ${message}`, details)
+    return
+  }
+
+  console.info(`[ocr-client:${requestId}] ${message}`)
+}
+
+function logOcrClientError(requestId: string, message: string, details?: unknown) {
+  if (typeof details === 'undefined') {
+    console.error(`[ocr-client:${requestId}] ${message}`)
+    return
+  }
+
+  console.error(`[ocr-client:${requestId}] ${message}`, details)
 }
 
 export async function extractTextFromImages(
   files: File[],
-  { timeoutMs = 120000 }: ExtractTextFromImagesOptions = {},
+  { timeoutMs = 120000, requestId = createOcrRequestId() }: ExtractTextFromImagesOptions = {},
 ) {
   if (files.length === 0) {
     throw new Error('Add at least one image before generating cards.')
   }
 
+  const requestStartedAt = Date.now()
   const formData = new FormData()
   files.forEach((file) => {
     formData.append('images', file, file.name)
+  })
+
+  logOcrClientInfo(requestId, `Starting OCR upload for ${files.length} image(s).`, {
+    timeoutMs,
+    files: files.map((file, index) => ({
+      index: index + 1,
+      name: file.name,
+      type: file.type,
+      size: file.size,
+    })),
   })
 
   const controller = new AbortController()
@@ -1093,24 +1138,61 @@ export async function extractTextFromImages(
       method: 'POST',
       body: formData,
       signal: controller.signal,
+      headers: {
+        'x-ocr-request-id': requestId,
+      },
     })
   } catch (reason) {
     if (reason instanceof DOMException && reason.name === 'AbortError') {
+      logOcrClientError(
+        requestId,
+        `OCR request aborted after ${Date.now() - requestStartedAt}ms.`,
+        {
+          timeoutMs,
+          fileCount: files.length,
+        },
+      )
       throw new Error(
         'Text extraction took too long. Try a clearer photo, crop the page tighter, or use fewer images.',
       )
     }
+    logOcrClientError(
+      requestId,
+      `OCR request failed before a response after ${Date.now() - requestStartedAt}ms.`,
+      reason,
+    )
     throw reason
   } finally {
     window.clearTimeout(timeoutId)
   }
 
+  logOcrClientInfo(requestId, `OCR response received in ${Date.now() - requestStartedAt}ms.`, {
+    status: response.status,
+    ok: response.ok,
+  })
+
   if (!response.ok) {
-    const error = (await response.json().catch(() => null)) as { error?: string } | null
+    const error = (await response.json().catch(() => null)) as ExtractTextFromImagesErrorResponse | null
+    logOcrClientError(
+      requestId,
+      `OCR request failed with status ${response.status}.`,
+      {
+        stage: error?.stage ?? null,
+        serverRequestId: error?.requestId ?? null,
+        error: error?.error ?? null,
+      },
+    )
     throw new Error(error?.error ?? 'Unable to extract text from these images.')
   }
 
-  return (await response.json()) as ExtractedImageTextResult
+  const result = (await response.json()) as ExtractedImageTextResult
+  logOcrClientInfo(requestId, `OCR completed in ${Date.now() - requestStartedAt}ms.`, {
+    serverRequestId: result.requestId ?? null,
+    pages: result.pages.length,
+    warnings: result.warnings.length,
+    combinedLength: result.combinedText.length,
+  })
+  return result
 }
 
 export async function requestCardAudio(
