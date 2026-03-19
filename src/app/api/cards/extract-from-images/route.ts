@@ -1,4 +1,6 @@
 import { access, mkdir } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { NextResponse } from 'next/server'
 import Tesseract from 'tesseract.js'
@@ -10,16 +12,9 @@ export const maxDuration = 60
 
 const WORKER_INIT_TIMEOUT_MS = 20000
 const RECOGNIZE_TIMEOUT_MS = 30000
-const OCR_CACHE_DIR = path.join(process.cwd(), '.cache', 'tesseract')
-const TESSERACT_WORKER_PATH = path.join(
-  process.cwd(),
-  'node_modules',
-  'tesseract.js',
-  'src',
-  'worker-script',
-  'node',
-  'index.js',
-)
+const require = createRequire(import.meta.url)
+const OCR_CACHE_DIR = path.join(tmpdir(), 'memocards-tesseract')
+const TESSERACT_WORKER_PATH = require.resolve('tesseract.js/src/worker-script/node/index.js')
 
 type OcrPage = {
   id: string
