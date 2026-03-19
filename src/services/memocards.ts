@@ -1073,7 +1073,7 @@ interface ExtractTextFromImagesOptions {
 
 export async function extractTextFromImages(
   files: File[],
-  { timeoutMs = 55000 }: ExtractTextFromImagesOptions = {},
+  { timeoutMs = 120000 }: ExtractTextFromImagesOptions = {},
 ) {
   if (files.length === 0) {
     throw new Error('Add at least one image before generating cards.')

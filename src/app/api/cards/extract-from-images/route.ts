@@ -7,10 +7,10 @@ import { isLocalDevBypassEnabled } from '../../../../lib/devBypass'
 import { createSupabaseServerClient } from '../../../../lib/supabase/server'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 180
 
-const WORKER_INIT_TIMEOUT_MS = 20000
-const RECOGNIZE_TIMEOUT_MS = 30000
+const WORKER_INIT_TIMEOUT_MS = 45000
+const RECOGNIZE_TIMEOUT_MS = 90000
 const OCR_CACHE_DIR = path.join(tmpdir(), 'memocards-tesseract')
 const TESSERACT_WORKER_PATH = path.join(
   process.cwd(),

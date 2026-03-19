@@ -4,8 +4,16 @@ export interface DocumentImageProcessingOptions {
   rotation: number
   enhanceScan: boolean
   trimMargins: boolean
+  manualCrop?: DocumentCropRect | null
   maxDimension?: number
   minDimension?: number
+}
+
+export interface DocumentCropRect {
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 export interface PreparedDocumentImage {
@@ -21,6 +29,20 @@ function clamp(value: number, min: number, max: number) {
 function normalizeRotation(rotation: number) {
   const normalized = rotation % 360
   return normalized < 0 ? normalized + 360 : normalized
+}
+
+function normalizeCropRect(rect: DocumentCropRect) {
+  const left = clamp(rect.x, 0, 1)
+  const top = clamp(rect.y, 0, 1)
+  const right = clamp(rect.x + rect.width, left, 1)
+  const bottom = clamp(rect.y + rect.height, top, 1)
+
+  return {
+    x: left,
+    y: top,
+    width: clamp(right - left, 0.05, 1),
+    height: clamp(bottom - top, 0.05, 1),
+  }
 }
 
 function createCanvas(width: number, height: number) {
@@ -171,6 +193,23 @@ function cropCanvas(
   return cropped
 }
 
+function boundsFromManualCrop(
+  canvas: HTMLCanvasElement,
+  crop: DocumentCropRect | null | undefined,
+) {
+  if (!crop) {
+    return null
+  }
+
+  const normalized = normalizeCropRect(crop)
+  return {
+    left: Math.round(normalized.x * canvas.width),
+    top: Math.round(normalized.y * canvas.height),
+    right: Math.round((normalized.x + normalized.width) * canvas.width),
+    bottom: Math.round((normalized.y + normalized.height) * canvas.height),
+  }
+}
+
 function cloneCanvas(source: HTMLCanvasElement) {
   const next = createCanvas(source.width, source.height)
   const context = next.getContext('2d')
@@ -254,7 +293,8 @@ export async function prepareDocumentImage(
     rotation,
     enhanceScan,
     trimMargins,
-    maxDimension = 1800,
+    manualCrop,
+    maxDimension = 1440,
     minDimension = 960,
   }: DocumentImageProcessingOptions,
 ): Promise<PreparedDocumentImage> {
@@ -270,12 +310,16 @@ export async function prepareDocumentImage(
   const targetWidth = Math.max(1, Math.round(image.naturalWidth * scale))
   const targetHeight = Math.max(1, Math.round(image.naturalHeight * scale))
   const rotatedCanvas = drawRotatedImage(image, targetWidth, targetHeight, rotation)
+  const manuallyCroppedCanvas = cropCanvas(
+    rotatedCanvas,
+    boundsFromManualCrop(rotatedCanvas, manualCrop),
+  )
 
-  let workingCanvas = rotatedCanvas
-  let trimInfo = inspectCanvas(rotatedCanvas)
+  let workingCanvas = manuallyCroppedCanvas
+  let trimInfo = inspectCanvas(manuallyCroppedCanvas)
 
   if (enhanceScan) {
-    const enhanced = enhanceCanvasForOcr(rotatedCanvas)
+    const enhanced = enhanceCanvasForOcr(manuallyCroppedCanvas)
     workingCanvas = enhanced.canvas
     trimInfo = {
       luminances: enhanced.luminances,

@@ -4,14 +4,15 @@ import {
   ArrowDown,
   ArrowUp,
   Camera,
+  Crop,
   ImagePlus,
   PencilLine,
   RotateCw,
   Sparkles,
   Trash2,
 } from 'lucide-react'
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { prepareDocumentImage } from '../lib/documentImages'
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import { prepareDocumentImage, type DocumentCropRect } from '../lib/documentImages'
 import {
   parseDocumentText,
   type DocumentParseCandidate,
@@ -44,11 +45,29 @@ interface PendingImage {
   file: File
   previewUrl: string
   rotation: number
+  manualCrop: DocumentCropRect | null
   enhanceScan: boolean
   trimMargins: boolean
 }
 
 type BulkSourceMode = 'text' | 'images'
+type CropHandle = 'move' | 'nw' | 'ne' | 'sw' | 'se'
+
+interface ActiveImageCrop {
+  imageId: string
+  rect: DocumentCropRect
+}
+
+interface CropDragState {
+  handle: CropHandle
+  frameWidth: number
+  frameHeight: number
+  startX: number
+  startY: number
+  startRect: DocumentCropRect
+}
+
+const MIN_CROP_SIZE = 0.12
 
 function createItemId(prefix: string, index: number) {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -78,9 +97,77 @@ function createPendingImage(file: File, index: number): PendingImage {
     file,
     previewUrl: URL.createObjectURL(file),
     rotation: 0,
+    manualCrop: null,
     enhanceScan: true,
     trimMargins: true,
   }
+}
+
+function createDefaultCropRect(): DocumentCropRect {
+  return {
+    x: 0,
+    y: 0,
+    width: 1,
+    height: 1,
+  }
+}
+
+function normalizeCropRect(rect: DocumentCropRect): DocumentCropRect {
+  const left = Math.min(Math.max(rect.x, 0), 1)
+  const top = Math.min(Math.max(rect.y, 0), 1)
+  const right = Math.min(Math.max(left + rect.width, left + MIN_CROP_SIZE), 1)
+  const bottom = Math.min(Math.max(top + rect.height, top + MIN_CROP_SIZE), 1)
+
+  return {
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+  }
+}
+
+function applyCropDrag(
+  startRect: DocumentCropRect,
+  handle: CropHandle,
+  deltaX: number,
+  deltaY: number,
+): DocumentCropRect {
+  let left = startRect.x
+  let top = startRect.y
+  let right = startRect.x + startRect.width
+  let bottom = startRect.y + startRect.height
+
+  if (handle === 'move') {
+    const nextWidth = right - left
+    const nextHeight = bottom - top
+    left = Math.min(Math.max(left + deltaX, 0), 1 - nextWidth)
+    top = Math.min(Math.max(top + deltaY, 0), 1 - nextHeight)
+    right = left + nextWidth
+    bottom = top + nextHeight
+  } else {
+    if (handle === 'nw' || handle === 'sw') {
+      left = Math.min(Math.max(left + deltaX, 0), right - MIN_CROP_SIZE)
+    }
+
+    if (handle === 'ne' || handle === 'se') {
+      right = Math.max(Math.min(right + deltaX, 1), left + MIN_CROP_SIZE)
+    }
+
+    if (handle === 'nw' || handle === 'ne') {
+      top = Math.min(Math.max(top + deltaY, 0), bottom - MIN_CROP_SIZE)
+    }
+
+    if (handle === 'sw' || handle === 'se') {
+      bottom = Math.max(Math.min(bottom + deltaY, 1), top + MIN_CROP_SIZE)
+    }
+  }
+
+  return normalizeCropRect({
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+  })
 }
 
 function revokePreviewUrls(items: PendingImage[]) {
@@ -127,11 +214,14 @@ export function BulkCardGenerator({
   const [success, setSuccess] = useState<string | null>(null)
   const [progress, setProgress] = useState<{ percent: number; label: string } | null>(null)
   const [editingCandidateId, setEditingCandidateId] = useState<string | null>(null)
+  const [cropEditor, setCropEditor] = useState<ActiveImageCrop | null>(null)
   const editorRef = useRef<HTMLElement | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const cameraInputRef = useRef<HTMLInputElement | null>(null)
+  const cropStageRef = useRef<HTMLDivElement | null>(null)
   const imageItemsRef = useRef<PendingImage[]>([])
   const extractionProgressTimerRef = useRef<number | null>(null)
+  const cropDragRef = useRef<CropDragState | null>(null)
 
   useEffect(() => {
     imageItemsRef.current = imageItems
@@ -147,10 +237,59 @@ export function BulkCardGenerator({
     [],
   )
 
+  useEffect(() => {
+    if (!cropEditor) {
+      return
+    }
+
+    const imageStillExists = imageItems.some((item) => item.id === cropEditor.imageId)
+    if (!imageStillExists) {
+      setCropEditor(null)
+    }
+  }, [cropEditor, imageItems])
+
+  useEffect(() => {
+    function handlePointerMove(event: PointerEvent) {
+      const dragState = cropDragRef.current
+      if (!dragState) {
+        return
+      }
+
+      const deltaX = (event.clientX - dragState.startX) / dragState.frameWidth
+      const deltaY = (event.clientY - dragState.startY) / dragState.frameHeight
+
+      setCropEditor((current) =>
+        current
+          ? {
+              ...current,
+              rect: applyCropDrag(dragState.startRect, dragState.handle, deltaX, deltaY),
+            }
+          : current,
+      )
+    }
+
+    function handlePointerUp() {
+      cropDragRef.current = null
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+  }, [])
+
   const hasPreview = candidates.length > 0
   const editingCandidate = candidates.find((candidate) => candidate.id === editingCandidateId) ?? null
+  const activeCropImage = cropEditor
+    ? imageItems.find((image) => image.id === cropEditor.imageId) ?? null
+    : null
   const canGenerate =
-    sourceMode === 'text' ? Boolean(sourceText.trim()) : imageItems.length > 0
+    sourceMode === 'text' ? Boolean(sourceText.trim()) : imageItems.length > 0 && !cropEditor
   const canClear =
     Boolean(sourceText.trim()) ||
     imageItems.length > 0 ||
@@ -168,6 +307,15 @@ export function BulkCardGenerator({
   function resetFeedback() {
     setError(null)
     setSuccess(null)
+  }
+
+  function updateImageItem(
+    imageId: string,
+    updater: (image: PendingImage) => PendingImage,
+  ) {
+    replaceImageItems(
+      imageItems.map((item) => (item.id === imageId ? updater(item) : item)),
+    )
   }
 
   function clearPreview() {
@@ -218,8 +366,48 @@ export function BulkCardGenerator({
     revokePreviewUrls(imageItems)
     setImageItems([])
     setSourceText('')
+    setCropEditor(null)
     clearPreview()
     resetFeedback()
+  }
+
+  function openCropEditor(image: PendingImage) {
+    setCropEditor({
+      imageId: image.id,
+      rect: image.manualCrop ?? createDefaultCropRect(),
+    })
+    resetFeedback()
+  }
+
+  function startCropDrag(handle: CropHandle, event: ReactPointerEvent<HTMLButtonElement | HTMLDivElement>) {
+    if (!cropEditor || !cropStageRef.current) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+
+    const bounds = cropStageRef.current.getBoundingClientRect()
+    cropDragRef.current = {
+      handle,
+      frameWidth: Math.max(bounds.width, 1),
+      frameHeight: Math.max(bounds.height, 1),
+      startX: event.clientX,
+      startY: event.clientY,
+      startRect: cropEditor.rect,
+    }
+  }
+
+  function applyCropSelection() {
+    if (!cropEditor) {
+      return
+    }
+
+    updateImageItem(cropEditor.imageId, (item) => ({
+      ...item,
+      manualCrop: normalizeCropRect(cropEditor.rect),
+    }))
+    setCropEditor(null)
   }
 
   function applyParsedCandidates(
@@ -284,6 +472,7 @@ export function BulkCardGenerator({
 
       const nextImage = await prepareDocumentImage(image.file, {
         rotation: image.rotation,
+        manualCrop: image.manualCrop,
         enhanceScan: image.enhanceScan,
         trimMargins: image.trimMargins,
       })
@@ -320,7 +509,7 @@ export function BulkCardGenerator({
 
       startExtractionProgress(preparedFiles.length)
       const extracted = await extractTextFromImages(preparedFiles, {
-        timeoutMs: Math.min(90000, 45000 + preparedFiles.length * 12000),
+        timeoutMs: Math.min(170000, 100000 + preparedFiles.length * 30000),
       })
       stopExtractionProgress()
       setOcrPages(extracted.pages)
@@ -437,6 +626,7 @@ export function BulkCardGenerator({
               type="button"
               onClick={() => {
                 setSourceMode('text')
+                setCropEditor(null)
                 resetFeedback()
               }}
             >
@@ -448,6 +638,7 @@ export function BulkCardGenerator({
               type="button"
               onClick={() => {
                 setSourceMode('images')
+                setCropEditor(null)
                 resetFeedback()
               }}
             >
@@ -520,9 +711,10 @@ export function BulkCardGenerator({
               </div>
 
               {imageItems.length > 0 ? (
-                <div className="bulk-card-generator__image-list">
-                  {imageItems.map((image, index) => (
-                    <article key={image.id} className="preview-card bulk-card-generator__image-card">
+                <>
+                  <div className="bulk-card-generator__image-list">
+                    {imageItems.map((image, index) => (
+                      <article key={image.id} className="preview-card bulk-card-generator__image-card">
                       <div className="bulk-card-generator__image-preview">
                         <img
                           alt={`Document page ${index + 1}`}
@@ -539,6 +731,7 @@ export function BulkCardGenerator({
 
                         <div className="editor-shell__meta bulk-card-generator__image-meta">
                           <span className="status-pill">{image.rotation}°</span>
+                          {image.manualCrop && <span className="status-pill">Manual crop</span>}
                           {image.enhanceScan && <span className="status-pill">Enhance scan</span>}
                           {image.trimMargins && <span className="status-pill">Trim margins</span>}
                         </div>
@@ -588,6 +781,15 @@ export function BulkCardGenerator({
                             className="ghost-button ghost-button--inline"
                             disabled={parsing || saving}
                             type="button"
+                            onClick={() => openCropEditor(image)}
+                          >
+                            <Crop size={16} />
+                            Crop
+                          </button>
+                          <button
+                            className="ghost-button ghost-button--inline"
+                            disabled={parsing || saving}
+                            type="button"
                             onClick={() => {
                               replaceImageItems(
                                 imageItems.map((item) =>
@@ -621,13 +823,10 @@ export function BulkCardGenerator({
                               checked={image.enhanceScan}
                               type="checkbox"
                               onChange={(event) => {
-                                replaceImageItems(
-                                  imageItems.map((item) =>
-                                    item.id === image.id
-                                      ? { ...item, enhanceScan: event.target.checked }
-                                      : item,
-                                  ),
-                                )
+                                updateImageItem(image.id, (item) => ({
+                                  ...item,
+                                  enhanceScan: event.target.checked,
+                                }))
                               }}
                             />
                             Enhance scan
@@ -637,13 +836,10 @@ export function BulkCardGenerator({
                               checked={image.trimMargins}
                               type="checkbox"
                               onChange={(event) => {
-                                replaceImageItems(
-                                  imageItems.map((item) =>
-                                    item.id === image.id
-                                      ? { ...item, trimMargins: event.target.checked }
-                                      : item,
-                                  ),
-                                )
+                                updateImageItem(image.id, (item) => ({
+                                  ...item,
+                                  trimMargins: event.target.checked,
+                                }))
                               }}
                             />
                             Trim margins
@@ -652,7 +848,94 @@ export function BulkCardGenerator({
                       </div>
                     </article>
                   ))}
-                </div>
+                  </div>
+
+                  {activeCropImage && cropEditor ? (
+                    <section className="preview-card bulk-card-generator__crop-editor">
+                      <div className="panel-heading">
+                        <strong>Crop page</strong>
+                        <small>{activeCropImage.file.name}</small>
+                      </div>
+
+                      <div className="bulk-card-generator__crop-stage" ref={cropStageRef}>
+                        <img alt="Crop selected page" src={activeCropImage.previewUrl} />
+
+                        <div
+                          className="bulk-card-generator__crop-selection"
+                          style={{
+                            left: `${cropEditor.rect.x * 100}%`,
+                            top: `${cropEditor.rect.y * 100}%`,
+                            width: `${cropEditor.rect.width * 100}%`,
+                            height: `${cropEditor.rect.height * 100}%`,
+                          }}
+                          onPointerDown={(event) => startCropDrag('move', event)}
+                        >
+                          <button
+                            aria-label="Resize crop from top left"
+                            className="bulk-card-generator__crop-handle bulk-card-generator__crop-handle--nw"
+                            type="button"
+                            onPointerDown={(event) => startCropDrag('nw', event)}
+                          />
+                          <button
+                            aria-label="Resize crop from top right"
+                            className="bulk-card-generator__crop-handle bulk-card-generator__crop-handle--ne"
+                            type="button"
+                            onPointerDown={(event) => startCropDrag('ne', event)}
+                          />
+                          <button
+                            aria-label="Resize crop from bottom left"
+                            className="bulk-card-generator__crop-handle bulk-card-generator__crop-handle--sw"
+                            type="button"
+                            onPointerDown={(event) => startCropDrag('sw', event)}
+                          />
+                          <button
+                            aria-label="Resize crop from bottom right"
+                            className="bulk-card-generator__crop-handle bulk-card-generator__crop-handle--se"
+                            type="button"
+                            onPointerDown={(event) => startCropDrag('se', event)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bulk-card-generator__crop-copy">
+                        <small>Drag the crop box or its corners, then apply the crop before generating cards.</small>
+                      </div>
+
+                      <div className="modal-actions bulk-card-generator__crop-actions">
+                        <button
+                          className="ghost-button"
+                          disabled={parsing || saving}
+                          type="button"
+                          onClick={() => {
+                            updateImageItem(activeCropImage.id, (item) => ({ ...item, manualCrop: null }))
+                            setCropEditor({
+                              imageId: activeCropImage.id,
+                              rect: createDefaultCropRect(),
+                            })
+                          }}
+                        >
+                          Reset crop
+                        </button>
+                        <button
+                          className="ghost-button"
+                          disabled={parsing || saving}
+                          type="button"
+                          onClick={() => setCropEditor(null)}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="primary-button"
+                          disabled={parsing || saving}
+                          type="button"
+                          onClick={applyCropSelection}
+                        >
+                          Apply crop
+                        </button>
+                      </div>
+                    </section>
+                  ) : null}
+                </>
               ) : (
                 <p className="hint-text">
                   Capture one or more document pages. Printed text works best, and the images will be merged in the order shown here.
