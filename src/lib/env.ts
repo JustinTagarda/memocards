@@ -16,6 +16,7 @@ export const env = {
 }
 
 export const hasSupabaseEnvironment = Boolean(env.supabaseUrl && env.supabasePublishableKey)
-export const hasGoogleTtsEnvironment = Boolean(
+export const hasGoogleCloudEnvironment = Boolean(
   env.googleCloudProjectId && env.googleCloudClientEmail && env.googleCloudPrivateKey,
 )
+export const hasGoogleTtsEnvironment = hasGoogleCloudEnvironment

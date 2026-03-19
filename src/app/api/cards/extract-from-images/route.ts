@@ -1,26 +1,13 @@
-import { access, mkdir } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import path from 'node:path'
+import { ImageAnnotatorClient } from '@google-cloud/vision'
 import { NextResponse } from 'next/server'
-import Tesseract from 'tesseract.js'
 import { isLocalDevBypassEnabled } from '../../../../lib/devBypass'
+import { env, hasGoogleCloudEnvironment } from '../../../../lib/env'
 import { createSupabaseServerClient } from '../../../../lib/supabase/server'
 
 export const runtime = 'nodejs'
 export const maxDuration = 180
 
-const WORKER_INIT_TIMEOUT_MS = 45000
-const RECOGNIZE_TIMEOUT_MS = 90000
-const OCR_CACHE_DIR = path.join(tmpdir(), 'memocards-tesseract')
-const TESSERACT_WORKER_PATH = path.join(
-  process.cwd(),
-  'node_modules',
-  'tesseract.js',
-  'src',
-  'worker-script',
-  'node',
-  'index.js',
-)
+const GOOGLE_VISION_TIMEOUT_MS = 120000
 
 type OcrPage = {
   id: string
@@ -30,7 +17,37 @@ type OcrPage = {
   wordCount: number
 }
 
-let workerPromise: Promise<Tesseract.Worker> | null = null
+type VisionWord = {
+  confidence?: number | null
+}
+
+type VisionParagraph = {
+  words?: VisionWord[] | null
+}
+
+type VisionBlock = {
+  paragraphs?: VisionParagraph[] | null
+}
+
+type VisionPage = {
+  confidence?: number | null
+  blocks?: VisionBlock[] | null
+}
+
+type VisionTextAnnotation = {
+  text?: string | null
+  pages?: VisionPage[] | null
+}
+
+const visionClient = hasGoogleCloudEnvironment
+  ? new ImageAnnotatorClient({
+      projectId: env.googleCloudProjectId,
+      credentials: {
+        client_email: env.googleCloudClientEmail,
+        private_key: env.googleCloudPrivateKey,
+      },
+    })
+  : null
 
 function createRequestId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -56,22 +73,6 @@ function logOcrError(requestId: string, message: string, details?: unknown) {
   }
 
   console.error(`[ocr:${requestId}] ${message}`, details)
-}
-
-async function resetWorker() {
-  if (!workerPromise) {
-    return
-  }
-
-  const activePromise = workerPromise
-  workerPromise = null
-
-  try {
-    const worker = await activePromise
-    await worker.terminate()
-  } catch {
-    // Best effort reset only.
-  }
 }
 
 function normalizeOcrText(text: string) {
@@ -104,59 +105,41 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
   }
 }
 
-async function resolveWorkerScriptPath() {
-  await access(TESSERACT_WORKER_PATH).catch(() => {
-    throw new Error(`OCR worker script was not found at ${TESSERACT_WORKER_PATH}.`)
-  })
-  return TESSERACT_WORKER_PATH
+function countWords(text: string) {
+  return text.split(/\s+/).filter(Boolean).length
 }
 
-async function ensureOcrRuntimePaths(workerPath: string) {
-  await access(workerPath).catch(() => {
-    throw new Error(`OCR worker script was not found at ${workerPath}.`)
+function averageConfidence(annotation: VisionTextAnnotation | null | undefined) {
+  const wordConfidences: number[] = []
+
+  annotation?.pages?.forEach((page) => {
+    page.blocks?.forEach((block) => {
+      block.paragraphs?.forEach((paragraph) => {
+        paragraph.words?.forEach((word) => {
+          if (typeof word.confidence === 'number' && Number.isFinite(word.confidence)) {
+            wordConfidences.push(word.confidence)
+          }
+        })
+      })
+    })
   })
-  await mkdir(OCR_CACHE_DIR, { recursive: true })
-}
 
-async function getWorker(requestId: string) {
-  if (!workerPromise) {
-    const startedAt = Date.now()
-    logOcrInfo(requestId, 'Initializing Tesseract worker.')
-
-    workerPromise = (async () => {
-      const workerPath = await resolveWorkerScriptPath()
-      await ensureOcrRuntimePaths(workerPath)
-      logOcrInfo(requestId, 'Using OCR runtime paths.', {
-        workerPath,
-        cachePath: OCR_CACHE_DIR,
-      })
-
-      const worker = await Tesseract.createWorker('eng', Tesseract.OEM.DEFAULT, {
-        logger: (event) => {
-          const progress =
-            typeof event.progress === 'number' ? `${Math.round(event.progress * 100)}%` : 'n/a'
-          console.info(`[ocr-worker:${requestId}] ${event.status} (${progress})`)
-        },
-        workerPath,
-        cachePath: OCR_CACHE_DIR,
-      })
-
-      await worker.setParameters({
-        preserve_interword_spaces: '1',
-        tessedit_pageseg_mode: Tesseract.PSM.AUTO,
-      })
-      logOcrInfo(requestId, `Worker initialized in ${formatDuration(startedAt)}.`)
-      return worker
-    })()
-  } else {
-    logOcrInfo(requestId, 'Reusing cached Tesseract worker.')
+  if (wordConfidences.length > 0) {
+    const total = wordConfidences.reduce((sum, confidence) => sum + confidence, 0)
+    return Math.round((total / wordConfidences.length) * 100)
   }
 
-  return withTimeout(
-    workerPromise,
-    WORKER_INIT_TIMEOUT_MS,
-    'OCR initialization took too long. Try again in a moment.',
-  )
+  const pageConfidences =
+    annotation?.pages
+      ?.map((page) => page.confidence)
+      .filter((confidence): confidence is number => typeof confidence === 'number' && Number.isFinite(confidence)) ?? []
+
+  if (pageConfidences.length > 0) {
+    const total = pageConfidences.reduce((sum, confidence) => sum + confidence, 0)
+    return Math.round((total / pageConfidences.length) * 100)
+  }
+
+  return 0
 }
 
 async function getAuthorizedUser() {
@@ -175,6 +158,18 @@ async function getAuthorizedUser() {
 export async function POST(request: Request) {
   const requestStartedAt = Date.now()
   const requestId = request.headers.get('x-ocr-request-id')?.trim() || createRequestId()
+
+  if (!visionClient) {
+    return NextResponse.json(
+      {
+        requestId,
+        stage: 'config',
+        error: 'Google Cloud Vision environment is not configured.',
+      },
+      { status: 500 },
+    )
+  }
+
   const authorizedUser = await getAuthorizedUser()
   if (!authorizedUser.ok) {
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
@@ -208,14 +203,28 @@ export async function POST(request: Request) {
   const images = rawImages.filter((value): value is File => value instanceof File)
 
   if (images.length === 0) {
-    return NextResponse.json({ error: 'Add at least one image to extract text.' }, { status: 400 })
+    return NextResponse.json(
+      {
+        requestId,
+        stage: 'input',
+        error: 'Add at least one image to extract text.',
+      },
+      { status: 400 },
+    )
   }
 
   if (images.length > 12) {
-    return NextResponse.json({ error: 'Use up to 12 images at a time.' }, { status: 400 })
+    return NextResponse.json(
+      {
+        requestId,
+        stage: 'input',
+        error: 'Use up to 12 images at a time.',
+      },
+      { status: 400 },
+    )
   }
 
-  logOcrInfo(requestId, `Starting extraction for ${images.length} image(s).`, {
+  logOcrInfo(requestId, `Starting Vision extraction for ${images.length} image(s).`, {
     images: images.map((image, index) => ({
       index: index + 1,
       name: image.name || `image-${index + 1}`,
@@ -224,63 +233,52 @@ export async function POST(request: Request) {
     })),
   })
 
-  let worker: Tesseract.Worker
-  try {
-    worker = await getWorker(requestId)
-  } catch (reason) {
-    logOcrError(requestId, 'Worker initialization failed.', reason)
-    await resetWorker()
-    return NextResponse.json(
-      {
-        requestId,
-        stage: 'worker_init',
-        error:
-          reason instanceof Error
-            ? reason.message
-            : 'OCR initialization failed. Please try again.',
-      },
-      { status: 504 },
-    )
-  }
-
   const pages: OcrPage[] = []
   const warnings: string[] = []
 
   for (const [index, image] of images.entries()) {
     if (!image.type.startsWith('image/')) {
-      return NextResponse.json({ error: `Unsupported file type for ${image.name}.` }, { status: 400 })
+      return NextResponse.json(
+        {
+          requestId,
+          stage: 'input',
+          error: `Unsupported file type for ${image.name}.`,
+        },
+        { status: 400 },
+      )
     }
 
     const bytes = Buffer.from(await image.arrayBuffer())
     const pageStartedAt = Date.now()
     logOcrInfo(
       requestId,
-      `Recognizing page ${index + 1}/${images.length}: ${image.name || `image-${index + 1}`}.`,
+      `Submitting page ${index + 1}/${images.length} to Google Cloud Vision: ${image.name || `image-${index + 1}`}.`,
       {
         byteLength: bytes.byteLength,
       },
     )
 
-    let result: Tesseract.RecognizeResult
+    let result: Awaited<ReturnType<ImageAnnotatorClient['documentTextDetection']>>[0]
     try {
-      result = await withTimeout(
-        worker.recognize(bytes, {
-          rotateAuto: true,
+      ;[result] = await withTimeout(
+        visionClient.documentTextDetection({
+          image: {
+            content: bytes,
+          },
         }),
-        RECOGNIZE_TIMEOUT_MS,
+        GOOGLE_VISION_TIMEOUT_MS,
         `Reading ${image.name || `image ${index + 1}`} took too long. Try a tighter crop or clearer photo.`,
       )
     } catch (reason) {
       logOcrError(
         requestId,
-        `Recognition failed for ${image.name || `image-${index + 1}`} after ${formatDuration(pageStartedAt)}.`,
+        `Vision recognition failed for ${image.name || `image-${index + 1}`} after ${formatDuration(pageStartedAt)}.`,
         reason,
       )
-      await resetWorker()
       return NextResponse.json(
         {
           requestId,
-          stage: 'recognize',
+          stage: 'vision_request',
           error:
             reason instanceof Error
               ? reason.message
@@ -290,9 +288,28 @@ export async function POST(request: Request) {
       )
     }
 
-    const text = normalizeOcrText(result.data.text ?? '')
-    const confidence = Number.isFinite(result.data.confidence) ? Math.round(result.data.confidence) : 0
-    const wordCount = text.split(/\s+/).filter(Boolean).length
+    const responseError = result.error
+    if (responseError?.message) {
+      logOcrError(
+        requestId,
+        `Vision returned an error for ${image.name || `image-${index + 1}`}.`,
+        responseError,
+      )
+      return NextResponse.json(
+        {
+          requestId,
+          stage: 'vision_response',
+          error: responseError.message,
+        },
+        { status: 502 },
+      )
+    }
+
+    const annotation = (result.fullTextAnnotation ?? null) as VisionTextAnnotation | null
+    const fallbackText = result.textAnnotations?.[0]?.description ?? ''
+    const text = normalizeOcrText(annotation?.text ?? fallbackText)
+    const confidence = averageConfidence(annotation)
+    const wordCount = countWords(text)
 
     logOcrInfo(
       requestId,
@@ -308,8 +325,10 @@ export async function POST(request: Request) {
       continue
     }
 
-    if (confidence < 58) {
-      warnings.push(`OCR confidence was low for ${image.name || `image ${index + 1}`}. Review those cards carefully.`)
+    if (confidence > 0 && confidence < 58) {
+      warnings.push(
+        `OCR confidence was low for ${image.name || `image ${index + 1}`}. Review those cards carefully.`,
+      )
     }
 
     pages.push({
@@ -324,20 +343,20 @@ export async function POST(request: Request) {
   const combinedText = pages.map((page) => page.text).join('\n\n')
 
   if (!combinedText.trim()) {
-    logOcrInfo(requestId, `OCR finished without readable text after ${formatDuration(requestStartedAt)}.`, {
+    logOcrInfo(requestId, `Vision finished without readable text after ${formatDuration(requestStartedAt)}.`, {
       warnings: warnings.length,
     })
     return NextResponse.json(
       {
         requestId,
-        stage: 'recognize',
+        stage: 'vision_response',
         error: warnings[0] ?? 'No readable text was found in the selected images.',
       },
       { status: 422 },
     )
   }
 
-  logOcrInfo(requestId, `Completed extraction for ${images.length} image(s) in ${formatDuration(requestStartedAt)}.`, {
+  logOcrInfo(requestId, `Completed Vision extraction for ${images.length} image(s) in ${formatDuration(requestStartedAt)}.`, {
     pages: pages.length,
     warnings: warnings.length,
     combinedLength: combinedText.length,
