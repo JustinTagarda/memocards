@@ -8,7 +8,7 @@ export interface DocumentParseCandidate {
   draft: CardDraft
   sourceLabel: string
   confidence: 'high' | 'medium'
-  method: 'rule'
+  method: 'rule' | 'ai'
   warnings: string[]
 }
 

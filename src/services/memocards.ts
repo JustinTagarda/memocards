@@ -1068,9 +1068,30 @@ export interface ExtractedImageTextResult {
   warnings: string[]
 }
 
+export interface GeneratedLessonCard {
+  question: string
+  answer: string
+  tags: string[]
+  confidence: 'high' | 'medium'
+  note: string
+}
+
+export interface GeneratedLessonCardsResult {
+  requestId?: string
+  cards: GeneratedLessonCard[]
+  warnings: string[]
+}
+
 interface ExtractTextFromImagesOptions {
   timeoutMs?: number
   requestId?: string
+}
+
+interface GenerateCardsFromLessonOptions {
+  timeoutMs?: number
+  requestId?: string
+  deckTitle?: string
+  requestedCardCount?: number
 }
 
 interface ExtractTextFromImagesErrorResponse {
@@ -1191,6 +1212,92 @@ export async function extractTextFromImages(
     pages: result.pages.length,
     warnings: result.warnings.length,
     combinedLength: result.combinedText.length,
+  })
+  return result
+}
+
+export async function generateCardsFromLessonText(
+  sourceText: string,
+  {
+    timeoutMs = 120000,
+    requestId = createOcrRequestId(),
+    deckTitle,
+    requestedCardCount,
+  }: GenerateCardsFromLessonOptions = {},
+) {
+  const normalizedSource = sourceText.trim()
+  if (!normalizedSource) {
+    throw new Error('Add some lesson text before generating cards.')
+  }
+
+  const requestStartedAt = Date.now()
+  logOcrClientInfo(requestId, 'Starting lesson-card generation request.', {
+    timeoutMs,
+    sourceLength: normalizedSource.length,
+    deckTitle: deckTitle ?? null,
+    requestedCardCount: requestedCardCount ?? null,
+  })
+
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs)
+
+  let response: Response
+  try {
+    response = await fetch('/api/cards/generate-from-lesson', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-card-generation-request-id': requestId,
+      },
+      body: JSON.stringify({
+        sourceText: normalizedSource,
+        deckTitle,
+        requestedCardCount,
+      }),
+    })
+  } catch (reason) {
+    if (reason instanceof DOMException && reason.name === 'AbortError') {
+      logOcrClientError(requestId, `Lesson-card generation aborted after ${Date.now() - requestStartedAt}ms.`, {
+        timeoutMs,
+        sourceLength: normalizedSource.length,
+      })
+      throw new Error('AI card generation took too long. Try a shorter lesson excerpt or fewer pages.')
+    }
+    logOcrClientError(
+      requestId,
+      `Lesson-card generation failed before a response after ${Date.now() - requestStartedAt}ms.`,
+      reason,
+    )
+    throw reason
+  } finally {
+    window.clearTimeout(timeoutId)
+  }
+
+  logOcrClientInfo(requestId, `Lesson-card response received in ${Date.now() - requestStartedAt}ms.`, {
+    status: response.status,
+    ok: response.ok,
+  })
+
+  if (!response.ok) {
+    const error = (await response.json().catch(() => null)) as ExtractTextFromImagesErrorResponse | null
+    logOcrClientError(
+      requestId,
+      `Lesson-card generation failed with status ${response.status}.`,
+      {
+        stage: error?.stage ?? null,
+        serverRequestId: error?.requestId ?? null,
+        error: error?.error ?? null,
+      },
+    )
+    throw new Error(error?.error ?? 'Unable to generate cards from this lesson.')
+  }
+
+  const result = (await response.json()) as GeneratedLessonCardsResult
+  logOcrClientInfo(requestId, `Lesson-card generation completed in ${Date.now() - requestStartedAt}ms.`, {
+    serverRequestId: result.requestId ?? null,
+    cards: result.cards.length,
+    warnings: result.warnings.length,
   })
   return result
 }

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { prepareDocumentImage, type DocumentCropRect } from '../lib/documentImages'
+import { createEmptyCardDraft } from '../lib/importExport'
 import {
   parseDocumentText,
   type DocumentParseCandidate,
@@ -24,11 +25,14 @@ import {
   createOcrRequestId,
   extractTextFromImages,
   type ExtractedImageTextPage,
+  generateCardsFromLessonText,
+  type GeneratedLessonCard,
 } from '../services/memocards'
 import type { CardDraft } from '../types/models'
 import { CardForm } from './forms'
 
 interface BulkCardGeneratorProps {
+  deckTitle?: string
   prepareDraft?: (draft: CardDraft) => CardDraft
   onComplete: () => void
   onSaveAll: (
@@ -52,6 +56,7 @@ interface PendingImage {
 }
 
 type BulkSourceMode = 'text' | 'images'
+type BulkGenerationMode = 'lesson' | 'parse'
 type CropHandle = 'move' | 'nw' | 'ne' | 'sw' | 'se'
 
 interface ActiveImageCrop {
@@ -175,7 +180,7 @@ function revokePreviewUrls(items: PendingImage[]) {
   items.forEach((item) => URL.revokeObjectURL(item.previewUrl))
 }
 
-function buildGeneratedMessage(
+function buildParsedMessage(
   candidateCount: number,
   parserMode: DocumentParserMode,
   issueCount: number,
@@ -188,6 +193,14 @@ function buildGeneratedMessage(
   return `Generated ${candidateCount} card draft${candidateCount === 1 ? '' : 's'} from ${sourceLabel} using ${modeLabel(parserMode)}.`
 }
 
+function buildLessonMessage(candidateCount: number, sourceLabel: string, issueCount: number) {
+  if (issueCount > 0) {
+    return `Generated ${candidateCount} lesson card draft${candidateCount === 1 ? '' : 's'} from ${sourceLabel} with ${issueCount} item${issueCount === 1 ? '' : 's'} to review.`
+  }
+
+  return `Generated ${candidateCount} lesson card draft${candidateCount === 1 ? '' : 's'} from ${sourceLabel} with Gemini Flash Lite.`
+}
+
 function buildOcrIssues(warnings: string[]): DocumentParseIssue[] {
   return warnings.map((warning, index) => ({
     sourceLabel: `OCR note ${index + 1}`,
@@ -195,6 +208,22 @@ function buildOcrIssues(warnings: string[]): DocumentParseIssue[] {
     content: '',
     reason: warning,
   }))
+}
+
+function buildGeneratedDraft(card: GeneratedLessonCard): CardDraft {
+  const base = createEmptyCardDraft()
+  const question = card.question.trim()
+  const answer = card.answer.trim()
+
+  return {
+    ...base,
+    type: 'basic',
+    front: question,
+    back: answer,
+    prompt: question,
+    answer,
+    tags: card.tags,
+  }
 }
 
 function logBulkOcrInfo(requestId: string, message: string, details?: Record<string, unknown>) {
@@ -216,11 +245,13 @@ function logBulkOcrError(requestId: string, message: string, details?: unknown) 
 }
 
 export function BulkCardGenerator({
+  deckTitle,
   prepareDraft = (draft) => draft,
   onComplete,
   onSaveAll,
 }: BulkCardGeneratorProps) {
   const [sourceMode, setSourceMode] = useState<BulkSourceMode>('text')
+  const [generationMode, setGenerationMode] = useState<BulkGenerationMode>('lesson')
   const [sourceText, setSourceText] = useState('')
   const [parserMode, setParserMode] = useState<DocumentParserMode>('auto')
   const [candidates, setCandidates] = useState<PendingCandidate[]>([])
@@ -455,7 +486,38 @@ export function BulkCardGenerator({
       return
     }
 
-    setSuccess(buildGeneratedMessage(parsed.candidates.length, parserMode, nextIssues.length, sourceLabel))
+    setSuccess(buildParsedMessage(parsed.candidates.length, parserMode, nextIssues.length, sourceLabel))
+  }
+
+  function applyGeneratedCandidates(
+    generatedCards: GeneratedLessonCard[],
+    sourceLabel: string,
+    extraIssues: DocumentParseIssue[] = [],
+  ) {
+    const nextCandidates = generatedCards.map((card, index) => ({
+      id: createItemId('bulk-card', index),
+      sourceLabel: `Generated card ${index + 1}`,
+      confidence: (card.confidence === 'medium' ? 'medium' : 'high') as 'high' | 'medium',
+      method: 'ai' as const,
+      warnings: card.note ? [card.note] : [],
+      draft: prepareDraft(buildGeneratedDraft(card)),
+    }))
+
+    setCandidates(nextCandidates)
+    setIssues(extraIssues)
+    setEditingCandidateId(null)
+
+    if (nextCandidates.length === 0) {
+      setSuccess(null)
+      setError(
+        extraIssues.length > 0
+          ? 'No usable AI-generated cards were produced from that source.'
+          : 'The lesson did not produce any usable flashcards.',
+      )
+      return
+    }
+
+    setSuccess(buildLessonMessage(nextCandidates.length, sourceLabel, extraIssues.length))
   }
 
   async function handleGenerateFromText() {
@@ -469,11 +531,54 @@ export function BulkCardGenerator({
     resetFeedback()
 
     try {
+      if (generationMode === 'lesson') {
+        const requestId = createOcrRequestId()
+
+        logBulkOcrInfo(requestId, 'Starting lesson-card generation from pasted text.', {
+          deckTitle: deckTitle ?? null,
+          sourceLength: sourceText.trim().length,
+        })
+
+        setProgress({
+          percent: 20,
+          label: 'Analyzing lesson text...',
+        })
+
+        const generated = await generateCardsFromLessonText(sourceText, {
+          requestId,
+          deckTitle,
+          timeoutMs: 120000,
+        })
+
+        setProgress({
+          percent: 86,
+          label: 'Preparing AI-generated cards...',
+        })
+
+        applyGeneratedCandidates(
+          generated.cards,
+          'the pasted lesson text',
+          buildOcrIssues(generated.warnings),
+        )
+        logBulkOcrInfo(requestId, 'Applied lesson-generated cards from pasted text.', {
+          cardCount: generated.cards.length,
+          warningCount: generated.warnings.length,
+        })
+        setProgress(null)
+        return
+      }
+
       const parsed = parseDocumentText(sourceText, parserMode)
       applyParsedCandidates(parsed, 'the pasted text')
     } catch (reason) {
       clearPreview()
-      setError(reason instanceof Error ? reason.message : 'Unable to parse this text.')
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : generationMode === 'lesson'
+            ? 'Unable to generate cards from this lesson.'
+            : 'Unable to parse this text.',
+      )
     } finally {
       setParsing(false)
     }
@@ -569,27 +674,61 @@ export function BulkCardGenerator({
       setOcrPages(extracted.pages)
       setSourceText(extracted.combinedText)
 
-      setProgress({
-        percent: 74,
-        label: 'Parsing extracted text into cards...',
-      })
+      if (generationMode === 'lesson') {
+        setProgress({
+          percent: 74,
+          label: 'Generating cards from lesson text...',
+        })
 
-      const parsed = parseDocumentText(extracted.combinedText, parserMode)
-      applyParsedCandidates(
-        parsed,
-        `${preparedFiles.length} image${preparedFiles.length === 1 ? '' : 's'}`,
-        buildOcrIssues(extracted.warnings),
-      )
-      logBulkOcrInfo(requestId, 'Parsed OCR text into card drafts.', {
-        candidateCount: parsed.candidates.length,
-        issueCount: parsed.issues.length + extracted.warnings.length,
-      })
+        const generated = await generateCardsFromLessonText(extracted.combinedText, {
+          requestId,
+          deckTitle,
+          timeoutMs: Math.min(170000, 110000 + preparedFiles.length * 30000),
+        })
+
+        setProgress({
+          percent: 90,
+          label: 'Preparing AI-generated cards...',
+        })
+
+        applyGeneratedCandidates(
+          generated.cards,
+          `${preparedFiles.length} image${preparedFiles.length === 1 ? '' : 's'}`,
+          buildOcrIssues([...extracted.warnings, ...generated.warnings]),
+        )
+        logBulkOcrInfo(requestId, 'Applied lesson-generated cards from OCR text.', {
+          cardCount: generated.cards.length,
+          warningCount: extracted.warnings.length + generated.warnings.length,
+        })
+      } else {
+        setProgress({
+          percent: 74,
+          label: 'Parsing extracted text into cards...',
+        })
+
+        const parsed = parseDocumentText(extracted.combinedText, parserMode)
+        applyParsedCandidates(
+          parsed,
+          `${preparedFiles.length} image${preparedFiles.length === 1 ? '' : 's'}`,
+          buildOcrIssues(extracted.warnings),
+        )
+        logBulkOcrInfo(requestId, 'Parsed OCR text into card drafts.', {
+          candidateCount: parsed.candidates.length,
+          issueCount: parsed.issues.length + extracted.warnings.length,
+        })
+      }
       setProgress(null)
     } catch (reason) {
       stopExtractionProgress()
       clearPreview()
       logBulkOcrError(requestId, 'Image-based card generation failed.', reason)
-      setError(reason instanceof Error ? reason.message : 'Unable to generate cards from these images.')
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : generationMode === 'lesson'
+            ? 'Unable to generate cards from this lesson.'
+            : 'Unable to generate cards from these images.',
+      )
     } finally {
       stopExtractionProgress()
       setParsing(false)
@@ -702,6 +841,37 @@ export function BulkCardGenerator({
               }}
             >
               Photos / Images
+            </button>
+          </div>
+
+          <div className="bulk-card-generator__generation-mode">
+            <button
+              aria-pressed={generationMode === 'lesson'}
+              className={generationMode === 'lesson' ? 'choice-pill choice-pill--selected' : 'choice-pill'}
+              type="button"
+              onClick={() => {
+                setGenerationMode('lesson')
+                if (candidates.length > 0 || issues.length > 0 || ocrPages.length > 0) {
+                  clearPreview()
+                }
+                resetFeedback()
+              }}
+            >
+              Generate from lesson
+            </button>
+            <button
+              aria-pressed={generationMode === 'parse'}
+              className={generationMode === 'parse' ? 'choice-pill choice-pill--selected' : 'choice-pill'}
+              type="button"
+              onClick={() => {
+                setGenerationMode('parse')
+                if (candidates.length > 0 || issues.length > 0 || ocrPages.length > 0) {
+                  clearPreview()
+                }
+                resetFeedback()
+              }}
+            >
+              Parse existing Q&amp;A
             </button>
           </div>
 
@@ -1003,27 +1173,29 @@ export function BulkCardGenerator({
             </div>
           )}
 
-          <div className="field-grid bulk-card-generator__controls">
-            <label className="field quick-add-toolbar__type">
-              <span>Parser mode</span>
-              <select
-                value={parserMode}
-                onChange={(event) => {
-                  setParserMode(event.target.value as DocumentParserMode)
-                  if (candidates.length > 0 || issues.length > 0 || ocrPages.length > 0) {
-                    clearPreview()
-                  }
-                  resetFeedback()
-                }}
-              >
-                <option value="auto">Auto detect</option>
-                <option value="basic">Basic</option>
-                <option value="term">Term / Definition</option>
-                <option value="explanation">Explanation</option>
-                <option value="multiple_choice">Multiple Choice</option>
-              </select>
-            </label>
-          </div>
+          {generationMode === 'parse' && (
+            <div className="field-grid bulk-card-generator__controls">
+              <label className="field quick-add-toolbar__type">
+                <span>Parser mode</span>
+                <select
+                  value={parserMode}
+                  onChange={(event) => {
+                    setParserMode(event.target.value as DocumentParserMode)
+                    if (candidates.length > 0 || issues.length > 0 || ocrPages.length > 0) {
+                      clearPreview()
+                    }
+                    resetFeedback()
+                  }}
+                >
+                  <option value="auto">Auto detect</option>
+                  <option value="basic">Basic</option>
+                  <option value="term">Term / Definition</option>
+                  <option value="explanation">Explanation</option>
+                  <option value="multiple_choice">Multiple Choice</option>
+                </select>
+              </label>
+            </div>
+          )}
         </>
       )}
 
@@ -1116,7 +1288,13 @@ export function BulkCardGenerator({
                   <div className="quick-add-preview__meta">
                     <small>
                       {candidate.draft.type.replace('_', ' ')} ·{' '}
-                      {candidate.confidence === 'high' ? 'High confidence' : 'Review suggested'}
+                      {candidate.method === 'ai'
+                        ? candidate.confidence === 'high'
+                          ? 'AI generated'
+                          : 'AI generated · review suggested'
+                        : candidate.confidence === 'high'
+                          ? 'High confidence'
+                          : 'Review suggested'}
                     </small>
                   </div>
 

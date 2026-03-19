@@ -105,6 +105,7 @@ export function BulkCardGeneratorPage() {
 
         <div className="editor-shell__body">
           <BulkCardGenerator
+            deckTitle={activeDeck.title}
             prepareDraft={(draft) => applyEntryDefaultsToDraft(draft, entryDefaults, entryMemory)}
             onComplete={() => router.push(backHref as Route)}
             onSaveAll={async (drafts, onProgress) => {
