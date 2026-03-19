@@ -1,5 +1,4 @@
 import { access, mkdir } from 'node:fs/promises'
-import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { NextResponse } from 'next/server'
@@ -12,9 +11,16 @@ export const maxDuration = 60
 
 const WORKER_INIT_TIMEOUT_MS = 20000
 const RECOGNIZE_TIMEOUT_MS = 30000
-const require = createRequire(import.meta.url)
 const OCR_CACHE_DIR = path.join(tmpdir(), 'memocards-tesseract')
-const TESSERACT_WORKER_PATH = require.resolve('tesseract.js/src/worker-script/node/index.js')
+const TESSERACT_WORKER_PATH = path.join(
+  process.cwd(),
+  'node_modules',
+  'tesseract.js',
+  'src',
+  'worker-script',
+  'node',
+  'index.js',
+)
 
 type OcrPage = {
   id: string
@@ -72,9 +78,16 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
   }
 }
 
-async function ensureOcrRuntimePaths() {
+async function resolveWorkerScriptPath() {
   await access(TESSERACT_WORKER_PATH).catch(() => {
     throw new Error(`OCR worker script was not found at ${TESSERACT_WORKER_PATH}.`)
+  })
+  return TESSERACT_WORKER_PATH
+}
+
+async function ensureOcrRuntimePaths(workerPath: string) {
+  await access(workerPath).catch(() => {
+    throw new Error(`OCR worker script was not found at ${workerPath}.`)
   })
   await mkdir(OCR_CACHE_DIR, { recursive: true })
 }
@@ -85,13 +98,14 @@ async function getWorker() {
     console.info('[ocr] Initializing Tesseract worker...')
 
     workerPromise = (async () => {
-      await ensureOcrRuntimePaths()
-      console.info(`[ocr] Using worker path: ${TESSERACT_WORKER_PATH}`)
+      const workerPath = await resolveWorkerScriptPath()
+      await ensureOcrRuntimePaths(workerPath)
+      console.info(`[ocr] Using worker path: ${workerPath}`)
       console.info(`[ocr] Using cache path: ${OCR_CACHE_DIR}`)
 
       const worker = await Tesseract.createWorker('eng', Tesseract.OEM.DEFAULT, {
         logger: () => undefined,
-        workerPath: TESSERACT_WORKER_PATH,
+        workerPath,
         cachePath: OCR_CACHE_DIR,
       })
 
