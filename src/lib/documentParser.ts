@@ -30,10 +30,13 @@ interface DocumentBlock {
   text: string
 }
 
-interface LabeledPair {
-  left: string
-  right: string
+interface ParsedBlockLine {
+  raw: string
+  normalized: string
+  lineNumber: number
 }
+
+type MarkerKind = 'question' | 'answer' | 'term' | 'definition'
 
 const SUPPORTED_DOCUMENT_EXTENSIONS = ['.txt', '.md', '.markdown', '.text', '.tsv'] as const
 const EXPLANATION_PROMPT_PATTERN =
@@ -89,18 +92,138 @@ function normalizeDocumentText(content: string) {
   return content.replace(/\uFEFF/g, '').replace(/\r\n?/g, '\n').trim()
 }
 
-function normalizeLine(line: string) {
+function stripListPrefix(line: string) {
+  return line.replace(/^\d+\s*[.)]\s*/, '').trimStart()
+}
+
+function normalizeMarkerLine(line: string) {
   return line
+    .replace(
+      /^(question|q|answer|a|term|definition|meaning|description)\s*[:\-]\s*/i,
+      (_match, marker: string) => `${marker}: `,
+    )
+    .replace(/\s{2,}/g, ' ')
     .trim()
-    .replace(/^#{1,6}\s+/, '')
-    .replace(/^>\s+/, '')
-    .replace(/^[-*+]\s+/, '')
-    .replace(/^\d+[.)]\s+/, '')
-    .replace(/^`+/, '')
-    .replace(/`+$/, '')
-    .replace(/^\*\*(.+)\*\*$/, '$1')
-    .replace(/^__(.+)__$/, '$1')
-    .trim()
+}
+
+function normalizeLine(line: string) {
+  return normalizeMarkerLine(
+    stripListPrefix(
+      line
+        .trim()
+        .replace(/^#{1,6}\s+/, '')
+        .replace(/^>\s+/, '')
+        .replace(/^[-*+]\s+/, '')
+        .replace(/^`+/, '')
+        .replace(/`+$/, '')
+        .replace(/^\*\*(.+)\*\*$/, '$1')
+        .replace(/^__(.+)__$/, '$1')
+        .trim(),
+    ),
+  )
+}
+
+function toParsedBlockLines(block: DocumentBlock): ParsedBlockLine[] {
+  return block.text
+    .split('\n')
+    .map((raw, index) => ({
+      raw,
+      normalized: normalizeLine(raw),
+      lineNumber: block.startLine + index,
+    }))
+    .filter((line) => Boolean(line.normalized))
+}
+
+function getMarkerKind(line: string): MarkerKind | null {
+  if (/^(?:q|question):\s*/i.test(line)) {
+    return 'question'
+  }
+
+  if (/^(?:a|answer):\s*/i.test(line)) {
+    return 'answer'
+  }
+
+  if (/^term:\s*/i.test(line)) {
+    return 'term'
+  }
+
+  if (/^(?:definition|meaning|description):\s*/i.test(line)) {
+    return 'definition'
+  }
+
+  return null
+}
+
+function removeMarkerPrefix(line: string, markerKind: MarkerKind) {
+  switch (markerKind) {
+    case 'question':
+      return line.replace(/^(?:q|question):\s*/i, '').trim()
+    case 'answer':
+      return line.replace(/^(?:a|answer):\s*/i, '').trim()
+    case 'term':
+      return line.replace(/^term:\s*/i, '').trim()
+    case 'definition':
+      return line.replace(/^(?:definition|meaning|description):\s*/i, '').trim()
+  }
+}
+
+function looksLikeStandaloneHeader(line: string) {
+  if (!line || getMarkerKind(line) || /[.:?!]/.test(line)) {
+    return false
+  }
+
+  const words = line.split(/\s+/).filter(Boolean)
+  if (words.length === 0 || words.length > 4) {
+    return false
+  }
+
+  return words.every((word) => /^[A-Z][A-Za-z0-9'&/-]*$/.test(word) || /^[A-Z]{2,}[A-Za-z0-9'&/-]*$/.test(word))
+}
+
+function looksLikeQuestionLine(line: string) {
+  const normalized = normalizeMarkerLine(stripListPrefix(line))
+  if (!normalized || getMarkerKind(normalized)) {
+    return false
+  }
+
+  if (normalized.endsWith('?')) {
+    return true
+  }
+
+  return /^(who|what|when|where|why|how|which|name|define|describe|compare|explain)\b/i.test(normalized)
+}
+
+function isSectionHeader(line: string, nextLine = '') {
+  if (!looksLikeStandaloneHeader(line) || looksLikeQuestionLine(line)) {
+    return false
+  }
+
+  const words = line.split(/\s+/).filter(Boolean)
+  if (words.length > 1) {
+    return true
+  }
+
+  return Boolean(nextLine) && (getMarkerKind(nextLine) !== null || looksLikeQuestionLine(nextLine))
+}
+
+function splitInlineMarkedContent(content: string, markerKinds: MarkerKind[]) {
+  const markerPattern = markerKinds.includes('answer')
+    ? /(?:^|\s)(?:a|answer):\s*/i
+    : /(?:^|\s)(?:definition|meaning|description):\s*/i
+  const match = markerPattern.exec(content)
+
+  if (!match || typeof match.index !== 'number') {
+    return null
+  }
+
+  const left = content.slice(0, match.index).trim()
+  const right = content.slice(match.index).replace(markerPattern, '').trim()
+
+  if (!left || !right) {
+    return null
+  }
+
+  return { left, right }
 }
 
 function collectBlocks(input: string) {
@@ -139,13 +262,6 @@ function collectBlocks(input: string) {
   }
 
   return blocks
-}
-
-function getNormalizedLines(text: string) {
-  return text
-    .split('\n')
-    .map(normalizeLine)
-    .filter(Boolean)
 }
 
 function inferPairedType(left: string, right: string): Exclude<QuickAddCardType, 'multiple_choice'> {
@@ -213,60 +329,6 @@ function tryParseAutoInlineLine(line: string) {
   return null
 }
 
-function findLabeledPair(
-  lines: string[],
-  leftPattern: RegExp,
-  rightPattern: RegExp,
-): LabeledPair | null {
-  const leftIndex = lines.findIndex((line) => leftPattern.test(line))
-  const rightIndex = lines.findIndex((line, index) => index > leftIndex && rightPattern.test(line))
-
-  if (leftIndex === -1 || rightIndex === -1 || rightIndex <= leftIndex) {
-    return null
-  }
-
-  const left = [
-    lines[leftIndex]?.replace(leftPattern, '').trim() ?? '',
-    ...lines.slice(leftIndex + 1, rightIndex),
-  ]
-    .join('\n')
-    .trim()
-  const right = [
-    lines[rightIndex]?.replace(rightPattern, '').trim() ?? '',
-    ...lines.slice(rightIndex + 1),
-  ]
-    .join('\n')
-    .trim()
-
-  if (!left || !right) {
-    return null
-  }
-
-  return { left, right }
-}
-
-function tryParseLabeledBlock(lines: string[]) {
-  const questionPair = findLabeledPair(lines, /^q(?:uestion)?[:\-]\s*/i, /^a(?:nswer)?[:\-]\s*/i)
-  if (questionPair) {
-    return {
-      draft: createPairedDraft(inferPairedType(questionPair.left, questionPair.right), questionPair.left, questionPair.right),
-      confidence: 'high' as const,
-      warnings: [] as string[],
-    }
-  }
-
-  const termPair = findLabeledPair(lines, /^term[:\-]\s*/i, /^(definition|meaning|description)[:\-]\s*/i)
-  if (termPair) {
-    return {
-      draft: createPairedDraft('term', termPair.left, termPair.right),
-      confidence: 'high' as const,
-      warnings: [] as string[],
-    }
-  }
-
-  return null
-}
-
 function buildCandidate(
   draft: CardDraft,
   sourceLabel: string,
@@ -280,6 +342,210 @@ function buildCandidate(
     method: 'rule',
     warnings,
   }
+}
+
+function buildCandidateFromPair(
+  left: string,
+  right: string,
+  sourceLabel: string,
+  confidence: 'high' | 'medium',
+  warnings: string[] = [],
+  draftFactory: (leftValue: string, rightValue: string) => CardDraft = (leftValue, rightValue) =>
+    createPairedDraft(inferPairedType(leftValue, rightValue), leftValue, rightValue),
+) {
+  try {
+    return buildCandidate(draftFactory(left, right), sourceLabel, confidence, warnings)
+  } catch {
+    return null
+  }
+}
+
+function extractSequentialMarkedPairs(
+  block: DocumentBlock,
+  leftKinds: MarkerKind[],
+  rightKinds: MarkerKind[],
+  draftFactory: (leftValue: string, rightValue: string) => CardDraft,
+) {
+  const lines = toParsedBlockLines(block)
+  const candidates: DocumentParseCandidate[] = []
+  let leftParts: string[] = []
+  let rightParts: string[] = []
+  let pairStartLine = block.startLine
+  let activeSide: 'left' | 'right' | null = null
+
+  function flushCurrentPair() {
+    const left = leftParts.join('\n').trim()
+    const right = rightParts.join('\n').trim()
+    if (!left || !right) {
+      leftParts = []
+      rightParts = []
+      activeSide = null
+      return
+    }
+
+    const candidate = buildCandidateFromPair(left, right, `Line ${pairStartLine}`, 'high', [], draftFactory)
+    if (candidate) {
+      candidates.push(candidate)
+    }
+
+    leftParts = []
+    rightParts = []
+    activeSide = null
+  }
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const current = lines[index]
+    if (!current) {
+      continue
+    }
+
+    const nextLine = lines[index + 1]?.normalized ?? ''
+    const markerKind = getMarkerKind(current.normalized)
+
+    if (markerKind && leftKinds.includes(markerKind)) {
+      flushCurrentPair()
+
+      const leftContent = removeMarkerPrefix(current.normalized, markerKind)
+      const inlinePair = splitInlineMarkedContent(leftContent, rightKinds)
+      if (inlinePair) {
+        const candidate = buildCandidateFromPair(
+          inlinePair.left,
+          inlinePair.right,
+          `Line ${current.lineNumber}`,
+          'high',
+          [],
+          draftFactory,
+        )
+        if (candidate) {
+          candidates.push(candidate)
+        }
+        continue
+      }
+
+      leftParts = leftContent ? [leftContent] : []
+      rightParts = []
+      pairStartLine = current.lineNumber
+      activeSide = 'left'
+      continue
+    }
+
+    if (markerKind && rightKinds.includes(markerKind)) {
+      if (activeSide === null && leftParts.length === 0) {
+        continue
+      }
+
+      const rightContent = removeMarkerPrefix(current.normalized, markerKind)
+      rightParts = rightContent ? [rightContent] : []
+      activeSide = 'right'
+      continue
+    }
+
+    const sectionHeader = isSectionHeader(current.normalized, nextLine)
+    if (sectionHeader && activeSide === null) {
+      continue
+    }
+
+    if (sectionHeader && activeSide === 'right' && rightParts.length > 0) {
+      flushCurrentPair()
+      continue
+    }
+
+    if (activeSide === 'left') {
+      leftParts.push(current.normalized)
+      continue
+    }
+
+    if (activeSide === 'right') {
+      rightParts.push(current.normalized)
+    }
+  }
+
+  flushCurrentPair()
+  return candidates
+}
+
+function extractSequentialLabeledPairs(block: DocumentBlock) {
+  return extractSequentialMarkedPairs(
+    block,
+    ['question'],
+    ['answer'],
+    (left, right) => createPairedDraft(inferPairedType(left, right), left, right),
+  )
+}
+
+function extractSequentialTermDefinitionPairs(block: DocumentBlock) {
+  return extractSequentialMarkedPairs(block, ['term'], ['definition'], (left, right) => createPairedDraft('term', left, right))
+}
+
+function extractAlternatingUnlabeledPairs(block: DocumentBlock) {
+  const lines = toParsedBlockLines(block)
+  const candidates: DocumentParseCandidate[] = []
+  let questionParts: string[] = []
+  let answerParts: string[] = []
+  let questionLine = block.startLine
+
+  function flushCurrentPair() {
+    const question = questionParts.join('\n').trim()
+    const answer = answerParts.join('\n').trim()
+    if (!question || !answer) {
+      questionParts = []
+      answerParts = []
+      return
+    }
+
+    const candidate = buildCandidateFromPair(
+      question,
+      answer,
+      `Line ${questionLine}`,
+      'medium',
+      ['Built by pairing a question line with the following answer. Review before saving.'],
+    )
+    if (candidate) {
+      candidates.push(candidate)
+    }
+
+    questionParts = []
+    answerParts = []
+  }
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const current = lines[index]
+    if (!current || getMarkerKind(current.normalized)) {
+      return []
+    }
+
+    const nextLine = lines[index + 1]?.normalized ?? ''
+    if (questionParts.length === 0) {
+      if (isSectionHeader(current.normalized, nextLine)) {
+        continue
+      }
+
+      if (looksLikeQuestionLine(current.normalized)) {
+        questionParts = [current.normalized]
+        answerParts = []
+        questionLine = current.lineNumber
+      }
+      continue
+    }
+
+    if (answerParts.length > 0 && isSectionHeader(current.normalized, nextLine)) {
+      flushCurrentPair()
+      continue
+    }
+
+    if (looksLikeQuestionLine(current.normalized)) {
+      flushCurrentPair()
+      questionParts = [current.normalized]
+      answerParts = []
+      questionLine = current.lineNumber
+      continue
+    }
+
+    answerParts.push(current.normalized)
+  }
+
+  flushCurrentPair()
+  return candidates
 }
 
 function parseForcedMode(content: string, mode: QuickAddCardType): DocumentParseResult {
@@ -297,14 +563,13 @@ function parseForcedMode(content: string, mode: QuickAddCardType): DocumentParse
 }
 
 function parseBlockAsStructuredCard(block: DocumentBlock) {
-  const lines = getNormalizedLines(block.text)
-  if (lines.length < 2) {
-    return null
+  const lines = toParsedBlockLines(block).map((line) => line.normalized)
+  while (lines.length > 0 && isSectionHeader(lines[0] ?? '', lines[1] ?? '')) {
+    lines.shift()
   }
 
-  const labeled = tryParseLabeledBlock(lines)
-  if (labeled) {
-    return buildCandidate(labeled.draft, `Block ${block.index}`, labeled.confidence, labeled.warnings)
+  if (lines.length < 2) {
+    return null
   }
 
   const prompt = lines[0] ?? ''
@@ -321,6 +586,70 @@ function parseBlockAsStructuredCard(block: DocumentBlock) {
   )
 }
 
+function parseBlockWithStrategies(block: DocumentBlock) {
+  const lines = toParsedBlockLines(block)
+  if (lines.length === 0) {
+    return []
+  }
+
+  const inlineDrafts = lines.map((line) => tryParseAutoInlineLine(line.normalized))
+  const allInline = inlineDrafts.length > 0 && inlineDrafts.every((draft) => Boolean(draft))
+  if (allInline) {
+    return inlineDrafts.flatMap((draft, index) =>
+      draft ? [buildCandidate(draft, `Line ${lines[index]?.lineNumber ?? block.startLine}`, 'high')] : [],
+    )
+  }
+
+  const labeledCandidates = extractSequentialLabeledPairs(block)
+  if (labeledCandidates.length > 0) {
+    return labeledCandidates
+  }
+
+  const termCandidates = extractSequentialTermDefinitionPairs(block)
+  if (termCandidates.length > 0) {
+    return termCandidates
+  }
+
+  const alternatingCandidates = extractAlternatingUnlabeledPairs(block)
+  if (alternatingCandidates.length > 0) {
+    return alternatingCandidates
+  }
+
+  const structuredCard = parseBlockAsStructuredCard(block)
+  return structuredCard ? [structuredCard] : []
+}
+
+function canUseAsPendingBlock(block: DocumentBlock) {
+  const lines = toParsedBlockLines(block)
+  if (lines.length !== 1) {
+    return false
+  }
+
+  const onlyLine = lines[0]
+  if (!onlyLine) {
+    return false
+  }
+
+  return !getMarkerKind(onlyLine.normalized) && !looksLikeStandaloneHeader(onlyLine.normalized)
+}
+
+function getPendingPairText(block: DocumentBlock) {
+  const lines = toParsedBlockLines(block)
+  if (lines.length === 0) {
+    return ''
+  }
+
+  if (lines.length === 1 && looksLikeStandaloneHeader(lines[0]?.normalized ?? '')) {
+    return ''
+  }
+
+  while (lines.length > 0 && isSectionHeader(lines[0]?.normalized ?? '', lines[1]?.normalized ?? '')) {
+    lines.shift()
+  }
+
+  return lines.map((line) => line.normalized).join('\n').trim()
+}
+
 function parseAutoMode(content: string): DocumentParseResult {
   const blocks = collectBlocks(content)
   const candidates: DocumentParseCandidate[] = []
@@ -328,68 +657,55 @@ function parseAutoMode(content: string): DocumentParseResult {
   let pendingBlock: DocumentBlock | null = null
 
   for (const block of blocks) {
-    const lines = getNormalizedLines(block.text)
+    const lines = toParsedBlockLines(block)
 
     if (lines.length === 0) {
       continue
     }
 
-    const inlineDrafts = lines.map((line) => tryParseAutoInlineLine(line))
-    const allInline = inlineDrafts.every((draft) => Boolean(draft))
-
-    if (allInline && lines.length > 1) {
-      inlineDrafts.forEach((draft, index) => {
-        if (!draft) {
-          return
-        }
-        candidates.push(buildCandidate(draft, `Line ${block.startLine + index}`, 'high'))
-      })
-      continue
-    }
+    const nextCandidates = parseBlockWithStrategies(block)
 
     if (pendingBlock) {
-      try {
-        candidates.push(
-          buildCandidate(
-            createPairedDraft(
-              inferPairedType(pendingBlock.text, block.text),
-              normalizeLine(pendingBlock.text),
-              block.text.trim(),
-            ),
-            `Blocks ${pendingBlock.index}-${block.index}`,
-            'medium',
-            ['Built by pairing neighboring sections. Review before saving.'],
-          ),
-        )
-      } catch (reason) {
-        issues.push({
-          sourceLabel: `Blocks ${pendingBlock.index}-${block.index}`,
-          lineNumber: pendingBlock.startLine,
-          content: `${pendingBlock.text}\n\n${block.text}`,
-          reason: reason instanceof Error ? reason.message : 'Unable to parse these sections.',
-        })
+      if (nextCandidates.length === 0) {
+        const left = getPendingPairText(pendingBlock)
+        const right = getPendingPairText(block)
+        const pairedCandidate =
+          left && right
+            ? buildCandidateFromPair(
+                left,
+                right,
+                `Blocks ${pendingBlock.index}-${block.index}`,
+                'medium',
+                ['Built by pairing neighboring sections. Review before saving.'],
+              )
+            : null
+
+        if (pairedCandidate) {
+          candidates.push(pairedCandidate)
+          pendingBlock = null
+          continue
+        }
       }
+
+      issues.push({
+        sourceLabel: `Block ${pendingBlock.index}`,
+        lineNumber: pendingBlock.startLine,
+        content: pendingBlock.text,
+        reason: 'This section needs a matching answer block or a supported delimiter.',
+      })
       pendingBlock = null
+    }
+
+    if (nextCandidates.length > 0) {
+      candidates.push(...nextCandidates)
       continue
     }
 
-    if (lines.length === 1) {
-      const inlineDraft = inlineDrafts[0]
-      if (inlineDraft) {
-        candidates.push(buildCandidate(inlineDraft, `Line ${block.startLine}`, 'high'))
-        continue
-      }
-
+    if (canUseAsPendingBlock(block)) {
       pendingBlock = {
         ...block,
-        text: lines[0] ?? block.text,
+        text: lines[0]?.normalized ?? block.text,
       }
-      continue
-    }
-
-    const structuredCard = parseBlockAsStructuredCard(block)
-    if (structuredCard) {
-      candidates.push(structuredCard)
       continue
     }
 

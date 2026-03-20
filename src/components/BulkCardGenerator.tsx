@@ -19,6 +19,7 @@ import {
   type DocumentParseCandidate,
   type DocumentParseIssue,
   type DocumentParserMode,
+  type DocumentParseResult,
 } from '../lib/documentParser'
 import { summarizeQuickAddDraft } from '../lib/quickAdd'
 import {
@@ -74,6 +75,80 @@ interface CropDragState {
 }
 
 const MIN_CROP_SIZE = 0.12
+const LABELED_CARD_LINE_PATTERN =
+  /^(q(?:uestion)?|a(?:nswer)?|term|definition|meaning|description)\s*[:\-]\s*/i
+
+function normalizeBulkSourceText(content: string) {
+  return content.replace(/\uFEFF/g, '').replace(/\r\n?/g, '\n').trim()
+}
+
+function lineLooksLikeStructuredCard(line: string) {
+  const normalized = line.trim()
+  if (!normalized) {
+    return false
+  }
+
+  if (
+    LABELED_CARD_LINE_PATTERN.test(normalized) ||
+    normalized.includes(':::') ||
+    normalized.includes('::') ||
+    normalized.includes('->') ||
+    normalized.includes('\t')
+  ) {
+    return true
+  }
+
+  return normalized.includes('|') && normalized.split('|').map((segment) => segment.trim()).filter(Boolean).length >= 4
+}
+
+function detectTextGenerationMode(content: string, parsed: DocumentParseResult): BulkGenerationMode {
+  const normalized = normalizeBulkSourceText(content)
+  if (!normalized) {
+    return 'lesson'
+  }
+
+  const lines = normalized.split('\n').map((line) => line.trim()).filter(Boolean)
+  const blocks = normalized.split(/\n\s*\n/).map((block) => block.trim()).filter(Boolean)
+  const structuredLineCount = lines.filter((line) => lineLooksLikeStructuredCard(line)).length
+  const labeledLineCount = lines.filter((line) => LABELED_CARD_LINE_PATTERN.test(line)).length
+  const highConfidenceCount = parsed.candidates.filter(
+    (candidate) => candidate.confidence === 'high' && candidate.warnings.length === 0,
+  ).length
+  const mediumConfidenceCount = parsed.candidates.filter((candidate) => candidate.confidence === 'medium').length
+  const alternatingQuestionBlocks = blocks.filter((block, index) => {
+    if (index % 2 !== 0) {
+      return false
+    }
+
+    const firstLine = block.split('\n').map((line) => line.trim()).find(Boolean) ?? ''
+    return firstLine.endsWith('?')
+  }).length
+
+  if (structuredLineCount >= 2 || highConfidenceCount >= 2) {
+    return 'parse'
+  }
+
+  if (highConfidenceCount === 1 && parsed.candidates.length === 1 && parsed.issues.length === 0 && structuredLineCount >= 1) {
+    return 'parse'
+  }
+
+  if (highConfidenceCount >= 1 && labeledLineCount >= 2) {
+    return 'parse'
+  }
+
+  if (
+    parsed.candidates.length > 0 &&
+    highConfidenceCount === 0 &&
+    mediumConfidenceCount === parsed.candidates.length &&
+    parsed.issues.length === 0 &&
+    blocks.length === parsed.candidates.length * 2 &&
+    alternatingQuestionBlocks === parsed.candidates.length
+  ) {
+    return 'parse'
+  }
+
+  return 'lesson'
+}
 
 function createItemId(prefix: string, index: number) {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -251,9 +326,7 @@ export function BulkCardGenerator({
   onSaveAll,
 }: BulkCardGeneratorProps) {
   const [sourceMode, setSourceMode] = useState<BulkSourceMode>('text')
-  const [generationMode, setGenerationMode] = useState<BulkGenerationMode>('lesson')
   const [sourceText, setSourceText] = useState('')
-  const [parserMode, setParserMode] = useState<DocumentParserMode>('auto')
   const [candidates, setCandidates] = useState<PendingCandidate[]>([])
   const [issues, setIssues] = useState<DocumentParseIssue[]>([])
   const [ocrPages, setOcrPages] = useState<ExtractedImageTextPage[]>([])
@@ -464,6 +537,7 @@ export function BulkCardGenerator({
     parsed: ReturnType<typeof parseDocumentText>,
     sourceLabel: string,
     extraIssues: DocumentParseIssue[] = [],
+    appliedParserMode: DocumentParserMode = 'auto',
   ) {
     const nextIssues = [...extraIssues, ...parsed.issues]
     setCandidates(
@@ -486,7 +560,7 @@ export function BulkCardGenerator({
       return
     }
 
-    setSuccess(buildParsedMessage(parsed.candidates.length, parserMode, nextIssues.length, sourceLabel))
+    setSuccess(buildParsedMessage(parsed.candidates.length, appliedParserMode, nextIssues.length, sourceLabel))
   }
 
   function applyGeneratedCandidates(
@@ -527,58 +601,65 @@ export function BulkCardGenerator({
     }
 
     setParsing(true)
-    setProgress(null)
     resetFeedback()
 
     try {
-      if (generationMode === 'lesson') {
-        const requestId = createOcrRequestId()
+      setProgress({
+        percent: 14,
+        label: 'Detecting pasted text format...',
+      })
 
-        logBulkOcrInfo(requestId, 'Starting lesson-card generation from pasted text.', {
-          deckTitle: deckTitle ?? null,
-          sourceLength: sourceText.trim().length,
-        })
+      const parsed = parseDocumentText(sourceText, 'auto')
+      const detectedMode = detectTextGenerationMode(sourceText, parsed)
 
+      if (detectedMode === 'parse') {
         setProgress({
-          percent: 20,
-          label: 'Analyzing lesson text...',
+          percent: 68,
+          label: 'Parsing detected Q&A text...',
         })
 
-        const generated = await generateCardsFromLessonText(sourceText, {
-          requestId,
-          deckTitle,
-          timeoutMs: 120000,
-        })
-
-        setProgress({
-          percent: 86,
-          label: 'Preparing AI-generated cards...',
-        })
-
-        applyGeneratedCandidates(
-          generated.cards,
-          'the pasted lesson text',
-          buildOcrIssues(generated.warnings),
-        )
-        logBulkOcrInfo(requestId, 'Applied lesson-generated cards from pasted text.', {
-          cardCount: generated.cards.length,
-          warningCount: generated.warnings.length,
-        })
+        applyParsedCandidates(parsed, 'the pasted Q&A text', [], 'auto')
         setProgress(null)
         return
       }
 
-      const parsed = parseDocumentText(sourceText, parserMode)
-      applyParsedCandidates(parsed, 'the pasted text')
+      const requestId = createOcrRequestId()
+
+      logBulkOcrInfo(requestId, 'Starting lesson-card generation from pasted text.', {
+        deckTitle: deckTitle ?? null,
+        sourceLength: sourceText.trim().length,
+      })
+
+      setProgress({
+        percent: 20,
+        label: 'Analyzing lesson text...',
+      })
+
+      const generated = await generateCardsFromLessonText(sourceText, {
+        requestId,
+        deckTitle,
+        timeoutMs: 120000,
+      })
+
+      setProgress({
+        percent: 86,
+        label: 'Preparing AI-generated cards...',
+      })
+
+      applyGeneratedCandidates(
+        generated.cards,
+        'the pasted lesson text',
+        buildOcrIssues(generated.warnings),
+      )
+      logBulkOcrInfo(requestId, 'Applied lesson-generated cards from pasted text.', {
+        cardCount: generated.cards.length,
+        warningCount: generated.warnings.length,
+      })
+      setProgress(null)
     } catch (reason) {
       clearPreview()
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : generationMode === 'lesson'
-            ? 'Unable to generate cards from this lesson.'
-            : 'Unable to parse this text.',
-      )
+      setProgress(null)
+      setError(reason instanceof Error ? reason.message : 'Unable to process this pasted text.')
     } finally {
       setParsing(false)
     }
@@ -639,7 +720,6 @@ export function BulkCardGenerator({
 
     try {
       logBulkOcrInfo(requestId, `Starting OCR generation for ${imageItems.length} image(s).`, {
-        parserMode,
         images: imageItems.map((image, index) => ({
           index: index + 1,
           name: image.file.name,
@@ -674,7 +754,15 @@ export function BulkCardGenerator({
       setOcrPages(extracted.pages)
       setSourceText(extracted.combinedText)
 
-      if (generationMode === 'lesson') {
+      setProgress({
+        percent: 72,
+        label: 'Detecting extracted text format...',
+      })
+
+      const parsed = parseDocumentText(extracted.combinedText, 'auto')
+      const detectedMode = detectTextGenerationMode(extracted.combinedText, parsed)
+
+      if (detectedMode === 'lesson') {
         setProgress({
           percent: 74,
           label: 'Generating cards from lesson text...',
@@ -703,14 +791,14 @@ export function BulkCardGenerator({
       } else {
         setProgress({
           percent: 74,
-          label: 'Parsing extracted text into cards...',
+          label: 'Parsing detected Q&A text...',
         })
 
-        const parsed = parseDocumentText(extracted.combinedText, parserMode)
         applyParsedCandidates(
           parsed,
           `${preparedFiles.length} image${preparedFiles.length === 1 ? '' : 's'}`,
           buildOcrIssues(extracted.warnings),
+          'auto',
         )
         logBulkOcrInfo(requestId, 'Parsed OCR text into card drafts.', {
           candidateCount: parsed.candidates.length,
@@ -725,9 +813,7 @@ export function BulkCardGenerator({
       setError(
         reason instanceof Error
           ? reason.message
-          : generationMode === 'lesson'
-            ? 'Unable to generate cards from this lesson.'
-            : 'Unable to generate cards from these images.',
+          : 'Unable to process these images.',
       )
     } finally {
       stopExtractionProgress()
@@ -828,7 +914,7 @@ export function BulkCardGenerator({
                 resetFeedback()
               }}
             >
-              Paste text
+              Paste text / Q&amp;A
             </button>
             <button
               aria-pressed={sourceMode === 'images'}
@@ -844,53 +930,27 @@ export function BulkCardGenerator({
             </button>
           </div>
 
-          <div className="bulk-card-generator__generation-mode">
-            <button
-              aria-pressed={generationMode === 'lesson'}
-              className={generationMode === 'lesson' ? 'choice-pill choice-pill--selected' : 'choice-pill'}
-              type="button"
-              onClick={() => {
-                setGenerationMode('lesson')
-                if (candidates.length > 0 || issues.length > 0 || ocrPages.length > 0) {
-                  clearPreview()
-                }
-                resetFeedback()
-              }}
-            >
-              Generate from lesson
-            </button>
-            <button
-              aria-pressed={generationMode === 'parse'}
-              className={generationMode === 'parse' ? 'choice-pill choice-pill--selected' : 'choice-pill'}
-              type="button"
-              onClick={() => {
-                setGenerationMode('parse')
-                if (candidates.length > 0 || issues.length > 0 || ocrPages.length > 0) {
-                  clearPreview()
-                }
-                resetFeedback()
-              }}
-            >
-              Parse existing Q&amp;A
-            </button>
-          </div>
-
           {sourceMode === 'text' ? (
-            <label className="field bulk-card-generator__source">
-              <span>Source text</span>
-              <textarea
-                placeholder="Paste copied text here..."
-                rows={14}
-                value={sourceText}
-                onChange={(event) => {
-                  setSourceText(event.target.value)
-                  if (candidates.length > 0 || issues.length > 0 || ocrPages.length > 0) {
-                    clearPreview()
-                  }
-                  resetFeedback()
-                }}
-              />
-            </label>
+            <>
+              <label className="field bulk-card-generator__source">
+                <span>Source text</span>
+                <textarea
+                  placeholder="Paste lesson notes or existing Q&A here..."
+                  rows={14}
+                  value={sourceText}
+                  onChange={(event) => {
+                    setSourceText(event.target.value)
+                    if (candidates.length > 0 || issues.length > 0 || ocrPages.length > 0) {
+                      clearPreview()
+                    }
+                    resetFeedback()
+                  }}
+                />
+              </label>
+              <small className="hint-text">
+                Paste lesson notes or existing Q&amp;A. The app will detect the format and choose the right card-building flow when you generate.
+              </small>
+            </>
           ) : (
             <div className="bulk-card-generator__image-source">
               <input
@@ -938,6 +998,10 @@ export function BulkCardGenerator({
                   {imageItems.length > 0 ? 'Add images' : 'Upload images'}
                 </button>
               </div>
+
+              <small className="hint-text">
+                Add lesson pages or existing Q&amp;A sheets. After OCR, the app will detect the text format and choose the right card-building flow.
+              </small>
 
               {imageItems.length > 0 ? (
                 <>
@@ -1173,29 +1237,6 @@ export function BulkCardGenerator({
             </div>
           )}
 
-          {generationMode === 'parse' && (
-            <div className="field-grid bulk-card-generator__controls">
-              <label className="field quick-add-toolbar__type">
-                <span>Parser mode</span>
-                <select
-                  value={parserMode}
-                  onChange={(event) => {
-                    setParserMode(event.target.value as DocumentParserMode)
-                    if (candidates.length > 0 || issues.length > 0 || ocrPages.length > 0) {
-                      clearPreview()
-                    }
-                    resetFeedback()
-                  }}
-                >
-                  <option value="auto">Auto detect</option>
-                  <option value="basic">Basic</option>
-                  <option value="term">Term / Definition</option>
-                  <option value="explanation">Explanation</option>
-                  <option value="multiple_choice">Multiple Choice</option>
-                </select>
-              </label>
-            </div>
-          )}
         </>
       )}
 
