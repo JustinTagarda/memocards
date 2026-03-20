@@ -1484,7 +1484,9 @@ input[type='file'] {
 }
 
 .bulk-card-generator--has-preview {
-  min-height: clamp(30rem, calc(100dvh - 15rem), 54rem);
+  display: flex;
+  flex-direction: column;
+  min-height: max(22rem, calc(100dvh - 10rem));
 }
 
 .bulk-card-generator__source-mode,
@@ -1724,15 +1726,17 @@ input[type='file'] {
 }
 
 .bulk-card-generator__review {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   gap: var(--space-3);
+  min-height: 0;
 }
 
 .bulk-card-generator__review > *,
-.bulk-card-generator__review-layout > *,
 .bulk-card-generator__review-header > *,
 .bulk-card-generator__review-copy,
 .bulk-card-generator__review-list,
-.bulk-card-generator__review-editor,
 .bulk-card-generator__save-summary {
   min-width: 0;
 }
@@ -1815,18 +1819,10 @@ input[type='file'] {
   color: var(--ink-muted);
 }
 
-.bulk-card-generator__review-layout {
-  display: grid;
-  gap: var(--space-3);
-  align-items: start;
-}
-
-.bulk-card-generator__review-layout--editing {
-  grid-template-columns: minmax(0, 1.2fr) minmax(21rem, 0.9fr);
-}
-
 .bulk-card-generator__review-list {
-  max-height: clamp(22rem, calc(100dvh - 29rem), 42rem);
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 0;
 }
 
 .bulk-card-generator__review-card {
@@ -1840,11 +1836,6 @@ input[type='file'] {
 .bulk-card-generator__review-card--attention {
   border-color: rgba(242, 106, 46, 0.2);
   background: linear-gradient(180deg, rgba(255, 251, 247, 0.9), rgba(255, 255, 255, 0.84));
-}
-
-.bulk-card-generator__review-card--active {
-  border-color: rgba(48, 95, 168, 0.22);
-  box-shadow: 0 14px 30px rgba(22, 32, 56, 0.08);
 }
 
 .bulk-card-generator__review-meta {
@@ -1905,9 +1896,80 @@ input[type='file'] {
   align-items: center;
 }
 
-.bulk-card-generator__review-editor {
-  position: sticky;
-  top: var(--space-3);
+.bulk-card-generator__review-card--editor {
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-width: 2px;
+  border-color: rgba(48, 95, 168, 0.28);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 244, 239, 0.88));
+  box-shadow: 0 12px 22px rgba(22, 32, 56, 0.08);
+}
+
+.bulk-card-generator__review-editor-header,
+.bulk-card-generator__review-editor-copy {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.bulk-card-generator__review-editor-header {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-2);
+}
+
+.bulk-card-generator__review-editor-copy strong {
+  font-size: 1.1rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.bulk-card-generator__review-card--editor .stack-form--card {
+  gap: var(--space-2);
+}
+
+.bulk-card-generator__review-card--editor .field-grid {
+  gap: var(--space-2);
+}
+
+.bulk-card-generator__review-card--editor .card-form__meta-row {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.bulk-card-generator__review-card--editor .field span {
+  font-size: 0.76rem;
+  line-height: 1.2;
+}
+
+.bulk-card-generator__review-card--editor .field :is(select, input, textarea) {
+  padding: 0.58rem 0.72rem;
+}
+
+.bulk-card-generator__review-card--editor textarea {
+  min-height: 4.75rem;
+}
+
+.bulk-card-generator__review-card--editor .checkbox-inline {
+  min-height: 2.4rem;
+  padding-block: 0.55rem;
+}
+
+.bulk-card-generator__review-card--editor .card-form__meta-row .checkbox-inline {
+  align-self: end;
+}
+
+.bulk-card-generator__review-card--editor .modal-actions--card {
+  position: static;
+  z-index: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  padding-bottom: 0;
+  background: none;
+}
+
+.bulk-card-generator__review-card--editor .modal-actions--card > * {
+  width: 100%;
 }
 
 .bulk-card-generator__review-empty {
@@ -1917,13 +1979,15 @@ input[type='file'] {
 }
 
 .bulk-card-generator--has-preview .document-import-preview {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-height: clamp(22rem, calc(100dvh - 24rem), 44rem);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .bulk-card-generator--has-preview .document-import-preview .list-stack--scroll {
-  max-height: clamp(22rem, calc(100dvh - 29rem), 42rem);
+  flex: 1 1 auto;
+  max-height: none;
   min-height: 0;
 }
 
@@ -1931,6 +1995,7 @@ input[type='file'] {
   position: sticky;
   bottom: max(0.75rem, env(safe-area-inset-bottom));
   z-index: 2;
+  margin-top: auto;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-3);
   padding: var(--space-3);
@@ -1986,14 +2051,8 @@ input[type='file'] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .bulk-card-generator__review-layout--editing,
   .bulk-card-generator__actions--savebar {
     grid-template-columns: 1fr;
-  }
-
-  .bulk-card-generator__review-editor {
-    position: static;
-    order: -1;
   }
 
   .bulk-card-generator__actions--savebar .primary-button {
@@ -2092,10 +2151,6 @@ input[type='file'] {
     font-size: 0.9rem;
   }
 
-  .bulk-card-generator__review-layout {
-    gap: var(--space-2);
-  }
-
   .bulk-card-generator__review-card {
     gap: 0.7rem;
   }
@@ -2120,8 +2175,8 @@ input[type='file'] {
     padding-right: 0;
   }
 
-  .bulk-card-generator__review-editor .editor-shell__header,
-  .bulk-card-generator__review-editor .field-grid {
+  .bulk-card-generator__review-card--editor .field-grid,
+  .bulk-card-generator__review-card--editor .modal-actions--card {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -2173,10 +2228,6 @@ input[type='file'] {
 
   .bulk-card-generator__image-card {
     grid-template-columns: minmax(0, 12.5rem) minmax(0, 1fr);
-  }
-
-  .bulk-card-generator__review-layout--editing {
-    grid-template-columns: minmax(0, 1.15fr) minmax(20rem, 0.95fr);
   }
 }
 
@@ -3287,6 +3338,15 @@ input[type='file'] {
 
   .field-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bulk-card-generator__crop-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .bulk-card-generator__review-card--editor .card-form__meta-row {
+    grid-template-columns: minmax(0, 1fr) minmax(10rem, 12rem);
+    align-items: end;
   }
 
   .quick-add-toolbar {

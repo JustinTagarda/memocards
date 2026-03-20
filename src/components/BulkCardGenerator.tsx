@@ -49,6 +49,7 @@ interface PendingCandidate extends DocumentParseCandidate {
 interface PendingImage {
   id: string
   file: File
+  originalPreviewUrl: string
   previewUrl: string
   rotation: number
   manualCrop: DocumentCropRect | null
@@ -174,10 +175,12 @@ function modeLabel(mode: DocumentParserMode) {
 }
 
 function createPendingImage(file: File, index: number): PendingImage {
+  const originalPreviewUrl = URL.createObjectURL(file)
   return {
     id: createItemId('bulk-image', index),
     file,
-    previewUrl: URL.createObjectURL(file),
+    originalPreviewUrl,
+    previewUrl: originalPreviewUrl,
     rotation: 0,
     manualCrop: null,
     enhanceScan: true,
@@ -225,6 +228,16 @@ function normalizeCropRect(rect: DocumentCropRect): DocumentCropRect {
   }
 }
 
+function isDefaultCropRect(rect: DocumentCropRect) {
+  const normalized = normalizeCropRect(rect)
+  return (
+    normalized.x <= 0.001 &&
+    normalized.y <= 0.001 &&
+    normalized.width >= 0.999 &&
+    normalized.height >= 0.999
+  )
+}
+
 function applyCropDrag(
   startRect: DocumentCropRect,
   handle: CropHandle,
@@ -269,8 +282,30 @@ function applyCropDrag(
   })
 }
 
+function getImagePreviewUrls(item: PendingImage) {
+  return item.previewUrl === item.originalPreviewUrl
+    ? [item.originalPreviewUrl]
+    : [item.originalPreviewUrl, item.previewUrl]
+}
+
+function revokeUnusedPreviewUrls(previousItems: PendingImage[], nextItems: PendingImage[]) {
+  const activeUrls = new Set<string>()
+
+  nextItems.forEach((item) => {
+    getImagePreviewUrls(item).forEach((url) => activeUrls.add(url))
+  })
+
+  previousItems.forEach((item) => {
+    Array.from(new Set(getImagePreviewUrls(item))).forEach((url) => {
+      if (!activeUrls.has(url)) {
+        URL.revokeObjectURL(url)
+      }
+    })
+  })
+}
+
 function revokePreviewUrls(items: PendingImage[]) {
-  items.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+  revokeUnusedPreviewUrls(items, [])
 }
 
 function buildParsedMessage(
@@ -351,6 +386,7 @@ export function BulkCardGenerator({
   const [imageItems, setImageItems] = useState<PendingImage[]>([])
   const [parsing, setParsing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [applyingCrop, setApplyingCrop] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [progress, setProgress] = useState<{ percent: number; label: string } | null>(null)
@@ -358,7 +394,6 @@ export function BulkCardGenerator({
   const [generatedCount, setGeneratedCount] = useState(0)
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all')
   const [cropEditor, setCropEditor] = useState<ActiveImageCrop | null>(null)
-  const editorRef = useRef<HTMLElement | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const cameraInputRef = useRef<HTMLInputElement | null>(null)
   const cropStageRef = useRef<HTMLDivElement | null>(null)
@@ -428,9 +463,6 @@ export function BulkCardGenerator({
 
   const hasPreview = candidates.length > 0
   const editingCandidate = candidates.find((candidate) => candidate.id === editingCandidateId) ?? null
-  const activeCropImage = cropEditor
-    ? imageItems.find((image) => image.id === cropEditor.imageId) ?? null
-    : null
   const canGenerate =
     sourceMode === 'text' ? Boolean(sourceText.trim()) : imageItems.length > 0 && !cropEditor
   const canClear =
@@ -469,6 +501,7 @@ export function BulkCardGenerator({
   const reviewIntro = hasAttentionCards
     ? 'Check flagged cards.'
     : ''
+  const isImageBusy = parsing || saving || applyingCrop
   const filteredCandidates = candidates.filter((candidate) => {
     if (reviewFilter === 'clean') {
       return candidate.confidence === 'high' && candidate.warnings.length === 0
@@ -486,11 +519,14 @@ export function BulkCardGenerator({
   })
 
   useEffect(() => {
-    if (!editingCandidate) {
+    if (!editingCandidateId) {
       return
     }
-    editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [editingCandidate])
+
+    if (!filteredCandidates.some((candidate) => candidate.id === editingCandidateId)) {
+      setEditingCandidateId(null)
+    }
+  }, [editingCandidateId, filteredCandidates])
 
   useEffect(() => {
     if (reviewFilter === 'needs_review' && needsReviewCount === 0) {
@@ -564,8 +600,7 @@ export function BulkCardGenerator({
   }
 
   function clearAll() {
-    revokePreviewUrls(imageItems)
-    setImageItems([])
+    replaceImageItems([])
     setSourceText('')
     setCropEditor(null)
     clearPreview()
@@ -599,16 +634,52 @@ export function BulkCardGenerator({
     }
   }
 
-  function applyCropSelection() {
+  async function createCroppedPreviewUrl(image: PendingImage, cropRect: DocumentCropRect) {
+    const prepared = await prepareDocumentImage(image.file, {
+      rotation: 0,
+      enhanceScan: false,
+      trimMargins: false,
+      manualCrop: cropRect,
+      maxDimension: 1600,
+      minDimension: 0,
+    })
+
+    return URL.createObjectURL(prepared.blob)
+  }
+
+  async function applyCropSelection() {
     if (!cropEditor) {
       return
     }
 
-    updateImageItem(cropEditor.imageId, (item) => ({
-      ...item,
-      manualCrop: normalizeCropRect(cropEditor.rect),
-    }))
-    setCropEditor(null)
+    const currentImage = imageItemsRef.current.find((item) => item.id === cropEditor.imageId)
+    if (!currentImage) {
+      setCropEditor(null)
+      return
+    }
+
+    const normalizedRect = normalizeCropRect(cropEditor.rect)
+    const nextManualCrop = isDefaultCropRect(normalizedRect) ? null : normalizedRect
+
+    setApplyingCrop(true)
+    resetFeedback()
+
+    try {
+      const nextPreviewUrl = nextManualCrop
+        ? await createCroppedPreviewUrl(currentImage, nextManualCrop)
+        : currentImage.originalPreviewUrl
+
+      updateImageItem(cropEditor.imageId, (item) => ({
+        ...item,
+        manualCrop: nextManualCrop,
+        previewUrl: nextPreviewUrl,
+      }))
+      setCropEditor(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Unable to apply this crop.')
+    } finally {
+      setApplyingCrop(false)
+    }
   }
 
   function applyParsedCandidates(
@@ -951,6 +1022,8 @@ export function BulkCardGenerator({
   }
 
   function replaceImageItems(nextItems: PendingImage[]) {
+    revokeUnusedPreviewUrls(imageItemsRef.current, nextItems)
+    imageItemsRef.current = nextItems
     setImageItems(nextItems)
   }
 
@@ -1088,225 +1161,230 @@ export function BulkCardGenerator({
               {imageItems.length > 0 ? (
                 <>
                   <div className="bulk-card-generator__image-list">
-                    {imageItems.map((image, index) => (
-                      <article key={image.id} className="preview-card bulk-card-generator__image-card">
-                      <div className="bulk-card-generator__image-preview">
-                        <img
-                          alt={`Document page ${index + 1}`}
-                          src={image.previewUrl}
-                          style={{ '--rotation': `${image.rotation}deg` } as CSSProperties}
-                        />
-                      </div>
+                    {imageItems.map((image, index) => {
+                      if (cropEditor?.imageId === image.id) {
+                        return (
+                          <article key={image.id} className="preview-card bulk-card-generator__crop-editor">
+                            <div className="panel-heading">
+                              <strong>Crop page {index + 1}</strong>
+                              <small>{image.file.name}</small>
+                            </div>
 
-                      <div className="bulk-card-generator__image-copy">
-                        <div className="panel-heading">
-                          <strong>Page {index + 1}</strong>
-                          <small>{image.file.name}</small>
-                        </div>
+                            <div className="bulk-card-generator__crop-stage" ref={cropStageRef}>
+                              <img alt={`Crop page ${index + 1}`} src={image.originalPreviewUrl} />
 
-                        {summarizeImageSettings(image) ? (
-                          <small className="bulk-card-generator__image-meta-text">{summarizeImageSettings(image)}</small>
-                        ) : null}
+                              <div
+                                className="bulk-card-generator__crop-selection"
+                                style={{
+                                  left: `${cropEditor.rect.x * 100}%`,
+                                  top: `${cropEditor.rect.y * 100}%`,
+                                  width: `${cropEditor.rect.width * 100}%`,
+                                  height: `${cropEditor.rect.height * 100}%`,
+                                }}
+                                onPointerDown={(event) => startCropDrag('move', event)}
+                              >
+                                <button
+                                  aria-label="Resize crop from top left"
+                                  className="bulk-card-generator__crop-handle bulk-card-generator__crop-handle--nw"
+                                  type="button"
+                                  onPointerDown={(event) => startCropDrag('nw', event)}
+                                />
+                                <button
+                                  aria-label="Resize crop from top right"
+                                  className="bulk-card-generator__crop-handle bulk-card-generator__crop-handle--ne"
+                                  type="button"
+                                  onPointerDown={(event) => startCropDrag('ne', event)}
+                                />
+                                <button
+                                  aria-label="Resize crop from bottom left"
+                                  className="bulk-card-generator__crop-handle bulk-card-generator__crop-handle--sw"
+                                  type="button"
+                                  onPointerDown={(event) => startCropDrag('sw', event)}
+                                />
+                                <button
+                                  aria-label="Resize crop from bottom right"
+                                  className="bulk-card-generator__crop-handle bulk-card-generator__crop-handle--se"
+                                  type="button"
+                                  onPointerDown={(event) => startCropDrag('se', event)}
+                                />
+                              </div>
+                            </div>
 
-                        <div className="bulk-card-generator__image-buttons">
-                          <button
-                            className="ghost-button ghost-button--inline"
-                            disabled={index === 0 || parsing || saving}
-                            type="button"
-                            onClick={() => {
-                              if (index === 0) {
-                                return
-                              }
-                              const next = [...imageItems]
-                              const [item] = next.splice(index, 1)
-                              if (!item) {
-                                return
-                              }
-                              next.splice(index - 1, 0, item)
-                              replaceImageItems(next)
-                            }}
-                          >
-                            <ArrowUp size={16} />
-                            Move up
-                          </button>
-                          <button
-                            className="ghost-button ghost-button--inline"
-                            disabled={index === imageItems.length - 1 || parsing || saving}
-                            type="button"
-                            onClick={() => {
-                              if (index === imageItems.length - 1) {
-                                return
-                              }
-                              const next = [...imageItems]
-                              const [item] = next.splice(index, 1)
-                              if (!item) {
-                                return
-                              }
-                              next.splice(index + 1, 0, item)
-                              replaceImageItems(next)
-                            }}
-                          >
-                            <ArrowDown size={16} />
-                            Move down
-                          </button>
-                          <button
-                            className="ghost-button ghost-button--inline"
-                            disabled={parsing || saving}
-                            type="button"
-                            onClick={() => openCropEditor(image)}
-                          >
-                            <Crop size={16} />
-                            Crop
-                          </button>
-                          <button
-                            className="ghost-button ghost-button--inline"
-                            disabled={parsing || saving}
-                            type="button"
-                            onClick={() => {
-                              replaceImageItems(
-                                imageItems.map((item) =>
-                                  item.id === image.id
-                                    ? { ...item, rotation: (item.rotation + 90) % 360 }
-                                    : item,
-                                ),
-                              )
-                            }}
-                          >
-                            <RotateCw size={16} />
-                            Rotate
-                          </button>
-                          <button
-                            className="button-link button-link--danger"
-                            disabled={parsing || saving}
-                            type="button"
-                            onClick={() => {
-                              URL.revokeObjectURL(image.previewUrl)
-                              replaceImageItems(imageItems.filter((item) => item.id !== image.id))
-                            }}
-                          >
-                            <Trash2 size={16} />
-                            Remove
-                          </button>
-                        </div>
+                            <small className="bulk-card-generator__crop-copy">
+                              Drag the crop box, then apply.
+                            </small>
 
-                        <div className="checkbox-row checkbox-row--deck bulk-card-generator__image-toggles">
-                          <label>
-                            <input
-                              checked={image.enhanceScan}
-                              type="checkbox"
-                              onChange={(event) => {
-                                updateImageItem(image.id, (item) => ({
-                                  ...item,
-                                  enhanceScan: event.target.checked,
-                                }))
-                              }}
+                            <div className="modal-actions bulk-card-generator__crop-actions">
+                              <button
+                                className="ghost-button"
+                                disabled={isImageBusy}
+                                type="button"
+                                onClick={() =>
+                                  setCropEditor((current) =>
+                                    current && current.imageId === image.id
+                                      ? { ...current, rect: createDefaultCropRect() }
+                                      : current,
+                                  )
+                                }
+                              >
+                                Reset crop
+                              </button>
+                              <button
+                                className="ghost-button"
+                                disabled={isImageBusy}
+                                type="button"
+                                onClick={() => setCropEditor(null)}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                className="primary-button"
+                                disabled={isImageBusy}
+                                type="button"
+                                onClick={() => {
+                                  void applyCropSelection()
+                                }}
+                              >
+                                {applyingCrop ? 'Applying...' : 'Apply crop'}
+                              </button>
+                            </div>
+                          </article>
+                        )
+                      }
+
+                      return (
+                        <article key={image.id} className="preview-card bulk-card-generator__image-card">
+                          <div className="bulk-card-generator__image-preview">
+                            <img
+                              alt={`Document page ${index + 1}`}
+                              src={image.previewUrl}
+                              style={{ '--rotation': `${image.rotation}deg` } as CSSProperties}
                             />
-                            Enhance scan
-                          </label>
-                          <label>
-                            <input
-                              checked={image.trimMargins}
-                              type="checkbox"
-                              onChange={(event) => {
-                                updateImageItem(image.id, (item) => ({
-                                  ...item,
-                                  trimMargins: event.target.checked,
-                                }))
-                              }}
-                            />
-                            Trim margins
-                          </label>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
+                          </div>
+
+                          <div className="bulk-card-generator__image-copy">
+                            <div className="panel-heading">
+                              <strong>Page {index + 1}</strong>
+                              <small>{image.file.name}</small>
+                            </div>
+
+                            {summarizeImageSettings(image) ? (
+                              <small className="bulk-card-generator__image-meta-text">{summarizeImageSettings(image)}</small>
+                            ) : null}
+
+                            <div className="bulk-card-generator__image-buttons">
+                              <button
+                                className="ghost-button ghost-button--inline"
+                                disabled={index === 0 || isImageBusy}
+                                type="button"
+                                onClick={() => {
+                                  if (index === 0) {
+                                    return
+                                  }
+                                  const next = [...imageItems]
+                                  const [item] = next.splice(index, 1)
+                                  if (!item) {
+                                    return
+                                  }
+                                  next.splice(index - 1, 0, item)
+                                  replaceImageItems(next)
+                                }}
+                              >
+                                <ArrowUp size={16} />
+                                Move up
+                              </button>
+                              <button
+                                className="ghost-button ghost-button--inline"
+                                disabled={index === imageItems.length - 1 || isImageBusy}
+                                type="button"
+                                onClick={() => {
+                                  if (index === imageItems.length - 1) {
+                                    return
+                                  }
+                                  const next = [...imageItems]
+                                  const [item] = next.splice(index, 1)
+                                  if (!item) {
+                                    return
+                                  }
+                                  next.splice(index + 1, 0, item)
+                                  replaceImageItems(next)
+                                }}
+                              >
+                                <ArrowDown size={16} />
+                                Move down
+                              </button>
+                              <button
+                                className="ghost-button ghost-button--inline"
+                                disabled={isImageBusy}
+                                type="button"
+                                onClick={() => openCropEditor(image)}
+                              >
+                                <Crop size={16} />
+                                Crop
+                              </button>
+                              <button
+                                className="ghost-button ghost-button--inline"
+                                disabled={isImageBusy}
+                                type="button"
+                                onClick={() => {
+                                  replaceImageItems(
+                                    imageItems.map((item) =>
+                                      item.id === image.id
+                                        ? { ...item, rotation: (item.rotation + 90) % 360 }
+                                        : item,
+                                    ),
+                                  )
+                                }}
+                              >
+                                <RotateCw size={16} />
+                                Rotate
+                              </button>
+                              <button
+                                className="button-link button-link--danger"
+                                disabled={isImageBusy}
+                                type="button"
+                                onClick={() => {
+                                  replaceImageItems(imageItems.filter((item) => item.id !== image.id))
+                                }}
+                              >
+                                <Trash2 size={16} />
+                                Remove
+                              </button>
+                            </div>
+
+                            <div className="checkbox-row checkbox-row--deck bulk-card-generator__image-toggles">
+                              <label>
+                                <input
+                                  checked={image.enhanceScan}
+                                  type="checkbox"
+                                  onChange={(event) => {
+                                    updateImageItem(image.id, (item) => ({
+                                      ...item,
+                                      enhanceScan: event.target.checked,
+                                    }))
+                                  }}
+                                />
+                                Enhance scan
+                              </label>
+                              <label>
+                                <input
+                                  checked={image.trimMargins}
+                                  type="checkbox"
+                                  onChange={(event) => {
+                                    updateImageItem(image.id, (item) => ({
+                                      ...item,
+                                      trimMargins: event.target.checked,
+                                    }))
+                                  }}
+                                />
+                                Trim margins
+                              </label>
+                            </div>
+                          </div>
+                        </article>
+                      )
+                    })}
                   </div>
-
-                  {activeCropImage && cropEditor ? (
-                    <section className="preview-card bulk-card-generator__crop-editor">
-                      <div className="panel-heading">
-                        <strong>Crop page</strong>
-                        <small>{activeCropImage.file.name}</small>
-                      </div>
-
-                      <div className="bulk-card-generator__crop-stage" ref={cropStageRef}>
-                        <img alt="Crop selected page" src={activeCropImage.previewUrl} />
-
-                        <div
-                          className="bulk-card-generator__crop-selection"
-                          style={{
-                            left: `${cropEditor.rect.x * 100}%`,
-                            top: `${cropEditor.rect.y * 100}%`,
-                            width: `${cropEditor.rect.width * 100}%`,
-                            height: `${cropEditor.rect.height * 100}%`,
-                          }}
-                          onPointerDown={(event) => startCropDrag('move', event)}
-                        >
-                          <button
-                            aria-label="Resize crop from top left"
-                            className="bulk-card-generator__crop-handle bulk-card-generator__crop-handle--nw"
-                            type="button"
-                            onPointerDown={(event) => startCropDrag('nw', event)}
-                          />
-                          <button
-                            aria-label="Resize crop from top right"
-                            className="bulk-card-generator__crop-handle bulk-card-generator__crop-handle--ne"
-                            type="button"
-                            onPointerDown={(event) => startCropDrag('ne', event)}
-                          />
-                          <button
-                            aria-label="Resize crop from bottom left"
-                            className="bulk-card-generator__crop-handle bulk-card-generator__crop-handle--sw"
-                            type="button"
-                            onPointerDown={(event) => startCropDrag('sw', event)}
-                          />
-                          <button
-                            aria-label="Resize crop from bottom right"
-                            className="bulk-card-generator__crop-handle bulk-card-generator__crop-handle--se"
-                            type="button"
-                            onPointerDown={(event) => startCropDrag('se', event)}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="bulk-card-generator__crop-copy">
-                        <small>Drag the crop box or its corners, then apply the crop before generating cards.</small>
-                      </div>
-
-                      <div className="modal-actions bulk-card-generator__crop-actions">
-                        <button
-                          className="ghost-button"
-                          disabled={parsing || saving}
-                          type="button"
-                          onClick={() => {
-                            updateImageItem(activeCropImage.id, (item) => ({ ...item, manualCrop: null }))
-                            setCropEditor({
-                              imageId: activeCropImage.id,
-                              rect: createDefaultCropRect(),
-                            })
-                          }}
-                        >
-                          Reset crop
-                        </button>
-                        <button
-                          className="ghost-button"
-                          disabled={parsing || saving}
-                          type="button"
-                          onClick={() => setCropEditor(null)}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          className="primary-button"
-                          disabled={parsing || saving}
-                          type="button"
-                          onClick={applyCropSelection}
-                        >
-                          Apply crop
-                        </button>
-                      </div>
-                    </section>
-                  ) : null}
                 </>
               ) : (
                 <p className="hint-text">
@@ -1431,52 +1509,37 @@ export function BulkCardGenerator({
             </div>
           )}
 
-          <div
-            className={
-              editingCandidate
-                ? 'bulk-card-generator__review-layout bulk-card-generator__review-layout--editing'
-                : 'bulk-card-generator__review-layout'
-            }
-          >
-            <div className="list-stack list-stack--scroll bulk-card-generator__review-list">
-              {filteredCandidates.length > 0 ? (
-                filteredCandidates.map((candidate) => {
-                  const summary = summarizeQuickAddDraft(candidate.draft)
-                  const needsAttention = candidate.confidence === 'medium' || candidate.warnings.length > 0
-                  const isActive = candidate.id === editingCandidateId
+          <div className="list-stack list-stack--scroll bulk-card-generator__review-list">
+            {filteredCandidates.length > 0 ? (
+              filteredCandidates.map((candidate) => {
+                const summary = summarizeQuickAddDraft(candidate.draft)
+                const needsAttention = candidate.confidence === 'medium' || candidate.warnings.length > 0
+                const isActive = candidate.id === editingCandidateId
 
+                if (isActive) {
                   return (
                     <article
                       key={candidate.id}
-                      className={`activity-item document-import-item bulk-card-generator__review-card${
+                      className={`activity-item document-import-item bulk-card-generator__review-card bulk-card-generator__review-card--editor${
                         needsAttention ? ' bulk-card-generator__review-card--attention' : ''
-                      }${isActive ? ' bulk-card-generator__review-card--active' : ''}`}
+                      }`}
                     >
-                      <div className="bulk-card-generator__review-meta">
-                        <small
-                          className={`bulk-card-generator__review-meta-text${
-                            needsAttention ? ' bulk-card-generator__review-meta-text--warning' : ''
-                          }`}
-                        >
-                          {[
-                            candidate.draft.type.replace('_', ' '),
-                            needsAttention ? 'Needs review' : null,
-                            candidate.method === 'ai' ? 'AI' : null,
-                            candidate.warnings.length > 0
-                              ? `${candidate.warnings.length} warning${candidate.warnings.length === 1 ? '' : 's'}`
-                              : null,
-                          ].filter(Boolean).join(' · ')}
-                        </small>
-                        {isActive && <span className="bulk-card-generator__review-active-label">Editing</span>}
-                      </div>
-
-                      <div className="bulk-card-generator__summary">
-                        <p className="bulk-card-generator__summary-line bulk-card-generator__summary-line--prompt">
-                          {summary.heading}
-                        </p>
-                        <p className="bulk-card-generator__summary-line bulk-card-generator__summary-line--answer">
-                          {summary.detail || 'No answer yet.'}
-                        </p>
+                      <div className="bulk-card-generator__review-editor-header">
+                        <div className="bulk-card-generator__review-editor-copy">
+                          <strong>Edit card</strong>
+                          <small
+                            className={`bulk-card-generator__review-meta-text${
+                              needsAttention ? ' bulk-card-generator__review-meta-text--warning' : ''
+                            }`}
+                          >
+                            {[
+                              candidate.draft.type.replace('_', ' '),
+                              needsAttention ? 'Needs review' : null,
+                              candidate.method === 'ai' ? 'AI' : null,
+                            ].filter(Boolean).join(' · ')}
+                          </small>
+                        </div>
+                        <span className="bulk-card-generator__review-active-label">Editing</span>
                       </div>
 
                       {candidate.warnings.length > 0 && (
@@ -1486,88 +1549,98 @@ export function BulkCardGenerator({
                         </div>
                       )}
 
-                      <div className="document-import-item__actions bulk-card-generator__review-actions">
-                        <div className="inline-actions">
-                          <button
-                            className="ghost-button ghost-button--inline"
-                            disabled={saving}
-                            type="button"
-                            onClick={() => setEditingCandidateId(candidate.id)}
-                          >
-                            <PencilLine size={16} />
-                            Edit
-                          </button>
-                          <button
-                            className="button-link button-link--danger"
-                            disabled={saving}
-                            type="button"
-                            onClick={() => {
-                              if (candidate.id === editingCandidateId) {
-                                setEditingCandidateId(null)
-                              }
-                              setCandidates((current) => current.filter((item) => item.id !== candidate.id))
-                            }}
-                          >
-                            <Trash2 size={16} />
-                            Skip
-                          </button>
-                        </div>
-                      </div>
+                      <CardForm
+                        initialValue={candidate.draft}
+                        isEditing
+                        onCancel={() => setEditingCandidateId(null)}
+                        onSubmit={async (draft) => {
+                          setCandidates((current) =>
+                            current.map((currentCandidate) =>
+                              currentCandidate.id === candidate.id ? { ...currentCandidate, draft } : currentCandidate,
+                            ),
+                          )
+                          setEditingCandidateId(null)
+                        }}
+                      />
                     </article>
                   )
-                })
-              ) : (
-                <div className="preview-card bulk-card-generator__review-empty">
-                  <strong>No cards match this filter.</strong>
-                  <small>Switch filters to review the rest of this batch.</small>
-                </div>
-              )}
-            </div>
+                }
 
-            {editingCandidate && (
-              <section
-                ref={editorRef}
-                className="editor-shell editor-shell--inline editor-shell--bulk bulk-card-generator__review-editor"
-              >
-                <div className="editor-shell__header">
-                  <div className="editor-shell__copy">
-                    <h2>Edit generated card</h2>
-                  </div>
+                return (
+                  <article
+                    key={candidate.id}
+                    className={`activity-item document-import-item bulk-card-generator__review-card${
+                      needsAttention ? ' bulk-card-generator__review-card--attention' : ''
+                    }`}
+                  >
+                    <div className="bulk-card-generator__review-meta">
+                      <small
+                        className={`bulk-card-generator__review-meta-text${
+                          needsAttention ? ' bulk-card-generator__review-meta-text--warning' : ''
+                        }`}
+                      >
+                        {[
+                          candidate.draft.type.replace('_', ' '),
+                          needsAttention ? 'Needs review' : null,
+                          candidate.method === 'ai' ? 'AI' : null,
+                          candidate.warnings.length > 0
+                            ? `${candidate.warnings.length} warning${candidate.warnings.length === 1 ? '' : 's'}`
+                            : null,
+                        ].filter(Boolean).join(' · ')}
+                      </small>
+                    </div>
 
-                  <div className="editor-shell__meta">
-                    <small
-                      className={`editor-shell__meta-text${
-                        editingCandidate.confidence === 'high' && editingCandidate.warnings.length === 0
-                          ? ''
-                          : ' editor-shell__meta-text--warning'
-                      }`}
-                    >
-                      {[
-                        editingCandidate.draft.type.replace('_', ' '),
-                        editingCandidate.confidence === 'high' && editingCandidate.warnings.length === 0
-                          ? null
-                          : 'Needs review',
-                      ].filter(Boolean).join(' · ')}
-                    </small>
-                  </div>
-                </div>
+                    <div className="bulk-card-generator__summary">
+                      <p className="bulk-card-generator__summary-line bulk-card-generator__summary-line--prompt">
+                        {summary.heading}
+                      </p>
+                      <p className="bulk-card-generator__summary-line bulk-card-generator__summary-line--answer">
+                        {summary.detail || 'No answer yet.'}
+                      </p>
+                    </div>
 
-                <div className="editor-shell__body">
-                  <CardForm
-                    initialValue={editingCandidate.draft}
-                    isEditing
-                    onCancel={() => setEditingCandidateId(null)}
-                    onSubmit={async (draft) => {
-                      setCandidates((current) =>
-                        current.map((candidate) =>
-                          candidate.id === editingCandidate.id ? { ...candidate, draft } : candidate,
-                        ),
-                      )
-                      setEditingCandidateId(null)
-                    }}
-                  />
-                </div>
-              </section>
+                    {candidate.warnings.length > 0 && (
+                      <div className="bulk-card-generator__warning-note">
+                        <strong>Check this card</strong>
+                        <small>{candidate.warnings.join(' ')}</small>
+                      </div>
+                    )}
+
+                    <div className="document-import-item__actions bulk-card-generator__review-actions">
+                      <div className="inline-actions">
+                        <button
+                          className="ghost-button ghost-button--inline"
+                          disabled={saving}
+                          type="button"
+                          onClick={() => setEditingCandidateId(candidate.id)}
+                        >
+                          <PencilLine size={16} />
+                          Edit
+                        </button>
+                        <button
+                          className="button-link button-link--danger"
+                          disabled={saving}
+                          type="button"
+                          onClick={() => {
+                            if (candidate.id === editingCandidateId) {
+                              setEditingCandidateId(null)
+                            }
+                            setCandidates((current) => current.filter((item) => item.id !== candidate.id))
+                          }}
+                        >
+                          <Trash2 size={16} />
+                          Skip
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                )
+              })
+            ) : (
+              <div className="preview-card bulk-card-generator__review-empty">
+                <strong>No cards match this filter.</strong>
+                <small>Switch filters to review the rest of this batch.</small>
+              </div>
             )}
           </div>
         </section>

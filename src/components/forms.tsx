@@ -725,27 +725,29 @@ export function CardForm({
         </>
       )}
 
-      <label className="field">
-        <span>Tags</span>
-        <input
-          placeholder="hard, lecture 2"
-          value={draft.tags.join(', ')}
-          onChange={(event) => {
-            setDraft((current) => ({ ...current, tags: parseTags(event.target.value) }))
-          }}
-        />
-      </label>
+      <div className="card-form__meta-row">
+        <label className="field">
+          <span>Tags</span>
+          <input
+            placeholder="hard, lecture 2"
+            value={draft.tags.join(', ')}
+            onChange={(event) => {
+              setDraft((current) => ({ ...current, tags: parseTags(event.target.value) }))
+            }}
+          />
+        </label>
 
-      <label className="checkbox-inline">
-        <input
-          checked={draft.isFavorite}
-          type="checkbox"
-          onChange={(event) => {
-            setDraft((current) => ({ ...current, isFavorite: event.target.checked }))
-          }}
-        />
-        Favorite
-      </label>
+        <label className="checkbox-inline">
+          <input
+            checked={draft.isFavorite}
+            type="checkbox"
+            onChange={(event) => {
+              setDraft((current) => ({ ...current, isFavorite: event.target.checked }))
+            }}
+          />
+          Favorite
+        </label>
+      </div>
 
       <div className="modal-actions modal-actions--card">
         {!isEditing ? (
