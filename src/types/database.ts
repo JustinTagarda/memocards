@@ -208,6 +208,52 @@ export interface Database {
           updated_at?: string
         }
       }
+      audio_generation_queue: {
+        Row: {
+          id: string
+          user_id: string
+          deck_id: string
+          card_id: string
+          side: 'prompt' | 'answer'
+          source_text: string
+          status: 'queued' | 'processing' | 'ready' | 'failed'
+          attempts: number
+          last_error: string | null
+          requested_at: string
+          started_at: string | null
+          finished_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          deck_id: string
+          card_id: string
+          side: 'prompt' | 'answer'
+          source_text?: string
+          status?: 'queued' | 'processing' | 'ready' | 'failed'
+          attempts?: number
+          last_error?: string | null
+          requested_at?: string
+          started_at?: string | null
+          finished_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          deck_id?: string
+          card_id?: string
+          side?: 'prompt' | 'answer'
+          source_text?: string
+          status?: 'queued' | 'processing' | 'ready' | 'failed'
+          attempts?: number
+          last_error?: string | null
+          requested_at?: string
+          started_at?: string | null
+          finished_at?: string | null
+          updated_at?: string
+        }
+      }
       activity: {
         Row: {
           id: string
@@ -300,7 +346,16 @@ export interface Database {
       }
     }
     Views: Record<string, never>
-    Functions: Record<string, never>
+    Functions: {
+      claim_audio_generation_jobs: {
+        Args: {
+          limit_count: number
+          target_user_id?: string | null
+          target_deck_id?: string | null
+        }
+        Returns: Database['memocards']['Tables']['audio_generation_queue']['Row'][]
+      }
+    }
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>
   }

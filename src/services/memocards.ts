@@ -783,6 +783,7 @@ export async function saveCard(
   }
 
   await syncDeckCounts(uid, deckId)
+  void requestAudioQueueProcessing(deckId)
 }
 
 export async function saveCardsBatch(
@@ -835,6 +836,7 @@ export async function saveCardsBatch(
   })
 
   await syncDeckCounts(uid, deckId)
+  void requestAudioQueueProcessing(deckId)
 
   onProgress?.({
     percent: 100,
@@ -1070,6 +1072,7 @@ export async function importDeckBundle(
   })
 
   await syncDeckCounts(uid, deckId)
+  void requestAudioQueueProcessing(deckId)
   return deckId
 }
 
@@ -1345,6 +1348,27 @@ export async function requestCardAudio(
   }
 
   return (await response.json()) as { signedUrl: string; storagePath: string }
+}
+
+export async function requestAudioQueueProcessing(deckId?: string) {
+  if (isLocalDevBypassEnabled || typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    await fetch('/api/audio/process-queue', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        deckId,
+      }),
+      keepalive: true,
+    })
+  } catch {
+    return
+  }
 }
 
 export async function queueAnswerEvaluation(
