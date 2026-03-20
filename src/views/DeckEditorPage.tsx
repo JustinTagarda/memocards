@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowLeft, BookOpen, PencilLine } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import type { Route } from 'next'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
@@ -45,9 +45,9 @@ export function DeckEditorPage({ mode }: DeckEditorPageProps) {
   const activeUser = user
   const backHref = activeDeck ? `/app/decks/${activeDeck.id}` : '/app'
   const heading = activeDeck ? `Edit ${activeDeck.title}` : 'Create a new deck'
-  const intro = activeDeck
-    ? 'Update the deck details, study setup, and card defaults without working inside a modal.'
-    : 'Set up the deck basics, study defaults, and card entry defaults before you start adding cards.'
+  const metaText = activeDeck
+    ? `${activeDeck.counts.totalCards} cards · ${activeDeck.counts.dueCards} due now`
+    : 'Deck settings'
 
   return (
     <div className="page-stack page-stack--editor">
@@ -61,20 +61,11 @@ export function DeckEditorPage({ mode }: DeckEditorPageProps) {
       <section className="editor-shell editor-shell--deck">
         <div className="editor-shell__header">
           <div className="editor-shell__copy">
-            <p className="eyebrow">Deck</p>
             <h1>{heading}</h1>
-            <p>{intro}</p>
           </div>
 
           <div className="editor-shell__meta">
-            <span className="status-pill">
-              {activeDeck ? <PencilLine size={14} /> : <BookOpen size={14} />}
-              {activeDeck ? `${activeDeck.counts.totalCards} cards` : 'New deck'}
-            </span>
-            <span className="status-pill">{activeDeck ? `${activeDeck.counts.dueCards} due now` : 'Choose defaults once'}</span>
-            <span className="status-pill">
-              {activeDeck ? `Mode: ${activeDeck.preferences.defaultMode}` : 'Mobile-friendly editor'}
-            </span>
+            <small className="editor-shell__meta-text">{metaText}</small>
           </div>
         </div>
 

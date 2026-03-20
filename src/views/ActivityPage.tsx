@@ -18,9 +18,7 @@ export function ActivityPage() {
     <div className="page-stack">
       <section className="hero-panel hero-panel--feature activity-page__hero">
         <div className="hero-panel__copy">
-          <p className="eyebrow">Activity</p>
-          <h1>Recent study and latest activity</h1>
-          <p>Review your latest study sessions and activity updates in one place.</p>
+          <h1>Recent activity</h1>
         </div>
       </section>
 

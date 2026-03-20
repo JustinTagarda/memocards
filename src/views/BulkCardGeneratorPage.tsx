@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowLeft, BookOpen, Files } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import type { Route } from 'next'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
@@ -84,22 +84,13 @@ export function BulkCardGeneratorPage() {
       <section className="editor-shell editor-shell--deck editor-shell--bulk">
         <div className="editor-shell__header">
           <div className="editor-shell__copy">
-            <p className="eyebrow">Card</p>
             <h1>Create multiple cards for {activeDeck.title}</h1>
           </div>
 
           <div className="editor-shell__meta">
-            <span className="status-pill">
-              <Files size={14} />
-              Auto detect
-            </span>
-            <span className="status-pill">
-              <BookOpen size={14} />
-              {entryDefaults.cardType.replace('_', ' ')}
-            </span>
-            <span className="status-pill">
-              {activeDeck.counts.totalCards} card{activeDeck.counts.totalCards === 1 ? '' : 's'} in deck
-            </span>
+            <small className="editor-shell__meta-text">
+              Auto detect · {activeDeck.counts.totalCards} card{activeDeck.counts.totalCards === 1 ? '' : 's'} in deck
+            </small>
           </div>
         </div>
 

@@ -59,6 +59,7 @@ interface PendingImage {
 type BulkSourceMode = 'text' | 'images'
 type BulkGenerationMode = 'lesson' | 'parse'
 type CropHandle = 'move' | 'nw' | 'ne' | 'sw' | 'se'
+type ReviewFilter = 'all' | 'clean' | 'needs_review' | 'warnings'
 
 interface ActiveImageCrop {
   imageId: string
@@ -191,6 +192,23 @@ function createDefaultCropRect(): DocumentCropRect {
     width: 1,
     height: 1,
   }
+}
+
+function summarizeImageSettings(image: PendingImage) {
+  const parts: string[] = []
+  if (image.rotation !== 0) {
+    parts.push(`${image.rotation}°`)
+  }
+  if (image.manualCrop) {
+    parts.push('Cropped')
+  }
+  if (image.enhanceScan) {
+    parts.push('Enhanced')
+  }
+  if (image.trimMargins) {
+    parts.push('Trimmed')
+  }
+  return parts.join(' · ')
 }
 
 function normalizeCropRect(rect: DocumentCropRect): DocumentCropRect {
@@ -337,6 +355,8 @@ export function BulkCardGenerator({
   const [success, setSuccess] = useState<string | null>(null)
   const [progress, setProgress] = useState<{ percent: number; label: string } | null>(null)
   const [editingCandidateId, setEditingCandidateId] = useState<string | null>(null)
+  const [generatedCount, setGeneratedCount] = useState(0)
+  const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all')
   const [cropEditor, setCropEditor] = useState<ActiveImageCrop | null>(null)
   const editorRef = useRef<HTMLElement | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
@@ -419,6 +439,51 @@ export function BulkCardGenerator({
     candidates.length > 0 ||
     issues.length > 0 ||
     ocrPages.length > 0
+  const batchCount = Math.max(generatedCount, candidates.length)
+  const warningCount = candidates.filter((candidate) => candidate.warnings.length > 0).length
+  const needsReviewCount = candidates.filter(
+    (candidate) => candidate.confidence === 'medium' || candidate.warnings.length > 0,
+  ).length
+  const cleanCount = candidates.length - needsReviewCount
+  const skippedCount = Math.max(batchCount - candidates.length, 0)
+  const hasAttentionCards = needsReviewCount > 0
+  const reviewStats = hasAttentionCards
+    ? [
+        { id: 'generated', value: batchCount, label: 'Generated' },
+        { id: 'clean', value: cleanCount, label: 'Clean' },
+        { id: 'needs_review', value: needsReviewCount, label: 'Review' },
+        ...(warningCount > 0 ? [{ id: 'warnings', value: warningCount, label: 'Warnings' }] : []),
+      ]
+    : [
+        { id: 'generated', value: batchCount, label: 'Generated' },
+        { id: 'ready', value: candidates.length, label: 'Ready' },
+      ]
+  const reviewFilters: Array<{ id: ReviewFilter; label: string; count: number }> = hasAttentionCards
+    ? [
+        { id: 'all', label: 'All', count: candidates.length },
+        { id: 'clean', label: 'Clean', count: cleanCount },
+        { id: 'needs_review', label: 'Review', count: needsReviewCount },
+        ...(warningCount > 0 ? [{ id: 'warnings' as const, label: 'Warnings', count: warningCount }] : []),
+      ]
+    : []
+  const reviewIntro = hasAttentionCards
+    ? 'Check flagged cards.'
+    : ''
+  const filteredCandidates = candidates.filter((candidate) => {
+    if (reviewFilter === 'clean') {
+      return candidate.confidence === 'high' && candidate.warnings.length === 0
+    }
+
+    if (reviewFilter === 'needs_review') {
+      return candidate.confidence === 'medium' || candidate.warnings.length > 0
+    }
+
+    if (reviewFilter === 'warnings') {
+      return candidate.warnings.length > 0
+    }
+
+    return true
+  })
 
   useEffect(() => {
     if (!editingCandidate) {
@@ -426,6 +491,17 @@ export function BulkCardGenerator({
     }
     editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [editingCandidate])
+
+  useEffect(() => {
+    if (reviewFilter === 'needs_review' && needsReviewCount === 0) {
+      setReviewFilter('all')
+      return
+    }
+
+    if (reviewFilter === 'warnings' && warningCount === 0) {
+      setReviewFilter('all')
+    }
+  }, [needsReviewCount, reviewFilter, warningCount])
 
   function resetFeedback() {
     setError(null)
@@ -446,6 +522,8 @@ export function BulkCardGenerator({
     setIssues([])
     setOcrPages([])
     setEditingCandidateId(null)
+    setGeneratedCount(0)
+    setReviewFilter('all')
     setProgress(null)
   }
 
@@ -540,6 +618,8 @@ export function BulkCardGenerator({
     appliedParserMode: DocumentParserMode = 'auto',
   ) {
     const nextIssues = [...extraIssues, ...parsed.issues]
+    setGeneratedCount(parsed.candidates.length)
+    setReviewFilter('all')
     setCandidates(
       parsed.candidates.map((candidate, index) => ({
         ...candidate,
@@ -577,6 +657,8 @@ export function BulkCardGenerator({
       draft: prepareDraft(buildGeneratedDraft(card)),
     }))
 
+    setGeneratedCount(nextCandidates.length)
+    setReviewFilter('all')
     setCandidates(nextCandidates)
     setIssues(extraIssues)
     setEditingCandidateId(null)
@@ -948,7 +1030,7 @@ export function BulkCardGenerator({
                 />
               </label>
               <small className="hint-text">
-                Paste lesson notes or existing Q&amp;A. The app will detect the format and choose the right card-building flow when you generate.
+                Paste notes or Q&amp;A. The app detects the format.
               </small>
             </>
           ) : (
@@ -1000,7 +1082,7 @@ export function BulkCardGenerator({
               </div>
 
               <small className="hint-text">
-                Add lesson pages or existing Q&amp;A sheets. After OCR, the app will detect the text format and choose the right card-building flow.
+                Add notes or Q&amp;A sheets. The app detects the format after OCR.
               </small>
 
               {imageItems.length > 0 ? (
@@ -1022,12 +1104,9 @@ export function BulkCardGenerator({
                           <small>{image.file.name}</small>
                         </div>
 
-                        <div className="editor-shell__meta bulk-card-generator__image-meta">
-                          <span className="status-pill">{image.rotation}°</span>
-                          {image.manualCrop && <span className="status-pill">Manual crop</span>}
-                          {image.enhanceScan && <span className="status-pill">Enhance scan</span>}
-                          {image.trimMargins && <span className="status-pill">Trim margins</span>}
-                        </div>
+                        {summarizeImageSettings(image) ? (
+                          <small className="bulk-card-generator__image-meta-text">{summarizeImageSettings(image)}</small>
+                        ) : null}
 
                         <div className="bulk-card-generator__image-buttons">
                           <button
@@ -1241,7 +1320,7 @@ export function BulkCardGenerator({
       )}
 
       {error && <p className="error-text">{error}</p>}
-      {success && <p className="hint-text">{success}</p>}
+      {success && !hasPreview && <p className="hint-text">{success}</p>}
 
       {progress && (
         <div className="preview-card preview-card--accent bulk-card-generator__progress">
@@ -1256,131 +1335,242 @@ export function BulkCardGenerator({
       )}
 
       <div className="modal-actions quick-add-actions bulk-card-generator__actions bulk-card-generator__actions--top">
-        <button
-          className="primary-button"
-          disabled={hasPreview || parsing || saving || !canGenerate}
-          type="button"
-          onClick={() => {
-            void handleGenerate()
-          }}
-        >
-          <Sparkles size={16} />
-          {parsing ? 'Generating...' : 'Generate cards'}
-        </button>
+        {hasPreview ? (
+          <>
+            <button
+              className="ghost-button"
+              disabled={saving}
+              type="button"
+              onClick={() => {
+                clearPreview()
+                resetFeedback()
+              }}
+            >
+              <PencilLine size={16} />
+              Back to source
+            </button>
+            <button
+              className="ghost-button"
+              disabled={saving || !canClear}
+              type="button"
+              onClick={clearAll}
+            >
+              <Trash2 size={16} />
+              Start over
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              className="primary-button"
+              disabled={hasPreview || parsing || saving || !canGenerate}
+              type="button"
+              onClick={() => {
+                void handleGenerate()
+              }}
+            >
+              <Sparkles size={16} />
+              {parsing ? 'Generating...' : 'Generate cards'}
+            </button>
 
-        <button
-          className="ghost-button"
-          disabled={saving || !canClear}
-          type="button"
-          onClick={clearAll}
-        >
-          Clear
-        </button>
+            <button
+              className="ghost-button"
+              disabled={saving || !canClear}
+              type="button"
+              onClick={clearAll}
+            >
+              Clear
+            </button>
+          </>
+        )}
       </div>
 
-      {editingCandidate && (
-        <section ref={editorRef} className="editor-shell editor-shell--inline">
-          <div className="editor-shell__header">
-            <div className="editor-shell__copy">
-              <p className="eyebrow">Review draft</p>
-              <h2>Edit generated card</h2>
-              <p>Refine this draft before it goes into the batch save.</p>
-            </div>
-
-            <div className="editor-shell__meta">
-              <span className="status-pill">{editingCandidate.draft.type.replace('_', ' ')}</span>
-              <span className="status-pill">
-                {editingCandidate.confidence === 'high' ? 'High confidence' : 'Needs review'}
-              </span>
-            </div>
-          </div>
-
-          <div className="editor-shell__body">
-            <CardForm
-              initialValue={editingCandidate.draft}
-              isEditing
-              onCancel={() => setEditingCandidateId(null)}
-              onSubmit={async (draft) => {
-                setCandidates((current) =>
-                  current.map((candidate) =>
-                    candidate.id === editingCandidate.id ? { ...candidate, draft } : candidate,
-                  ),
-                )
-                setEditingCandidateId(null)
-              }}
-            />
-          </div>
-        </section>
-      )}
-
       {candidates.length > 0 && (
-        <div className="quick-add-preview document-import-preview">
-          <div className="panel-heading">
-            <strong>Preview cards</strong>
-            <small>{candidates.length} ready to save</small>
+        <section
+          className={`quick-add-preview document-import-preview bulk-card-generator__review${
+            hasAttentionCards ? '' : ' bulk-card-generator__review--clean'
+          }`}
+        >
+          <div className="bulk-card-generator__review-header">
+            <div className="bulk-card-generator__review-copy">
+              <div className="panel-heading">
+                <strong>Review</strong>
+                <small>{candidates.length} ready to save</small>
+              </div>
+              {reviewIntro ? <p className="hint-text">{reviewIntro}</p> : null}
+            </div>
+
+            <div className="bulk-card-generator__review-stats">
+              {reviewStats.map((stat) => (
+                <div key={stat.id} className="bulk-card-generator__stat">
+                  <strong>{stat.value}</strong>
+                  <small>{stat.label}</small>
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="list-stack list-stack--scroll">
-            {candidates.map((candidate) => {
-              const summary = summarizeQuickAddDraft(candidate.draft)
+          {reviewFilters.length > 0 && (
+            <div className="bulk-card-generator__review-filters" role="tablist" aria-label="Review filters">
+              {reviewFilters.map((filter) => (
+                <button
+                  key={filter.id}
+                  aria-pressed={reviewFilter === filter.id}
+                  className={
+                    reviewFilter === filter.id
+                      ? 'bulk-card-generator__filter-button bulk-card-generator__filter-button--active'
+                      : 'bulk-card-generator__filter-button'
+                  }
+                  type="button"
+                  onClick={() => setReviewFilter(filter.id)}
+                >
+                  <span>{filter.label}</span>
+                  <small>{filter.count}</small>
+                </button>
+              ))}
+            </div>
+          )}
 
-              return (
-                <article key={candidate.id} className="activity-item document-import-item">
-                  <div className="quick-add-preview__meta">
-                    <small>
-                      {candidate.draft.type.replace('_', ' ')} ·{' '}
-                      {candidate.method === 'ai'
-                        ? candidate.confidence === 'high'
-                          ? 'AI generated'
-                          : 'AI generated · review suggested'
-                        : candidate.confidence === 'high'
-                          ? 'High confidence'
-                          : 'Review suggested'}
+          <div
+            className={
+              editingCandidate
+                ? 'bulk-card-generator__review-layout bulk-card-generator__review-layout--editing'
+                : 'bulk-card-generator__review-layout'
+            }
+          >
+            <div className="list-stack list-stack--scroll bulk-card-generator__review-list">
+              {filteredCandidates.length > 0 ? (
+                filteredCandidates.map((candidate) => {
+                  const summary = summarizeQuickAddDraft(candidate.draft)
+                  const needsAttention = candidate.confidence === 'medium' || candidate.warnings.length > 0
+                  const isActive = candidate.id === editingCandidateId
+
+                  return (
+                    <article
+                      key={candidate.id}
+                      className={`activity-item document-import-item bulk-card-generator__review-card${
+                        needsAttention ? ' bulk-card-generator__review-card--attention' : ''
+                      }${isActive ? ' bulk-card-generator__review-card--active' : ''}`}
+                    >
+                      <div className="bulk-card-generator__review-meta">
+                        <small
+                          className={`bulk-card-generator__review-meta-text${
+                            needsAttention ? ' bulk-card-generator__review-meta-text--warning' : ''
+                          }`}
+                        >
+                          {[
+                            candidate.draft.type.replace('_', ' '),
+                            needsAttention ? 'Needs review' : null,
+                            candidate.method === 'ai' ? 'AI' : null,
+                            candidate.warnings.length > 0
+                              ? `${candidate.warnings.length} warning${candidate.warnings.length === 1 ? '' : 's'}`
+                              : null,
+                          ].filter(Boolean).join(' · ')}
+                        </small>
+                        {isActive && <span className="bulk-card-generator__review-active-label">Editing</span>}
+                      </div>
+
+                      <div className="bulk-card-generator__summary">
+                        <p className="bulk-card-generator__summary-line bulk-card-generator__summary-line--prompt">
+                          {summary.heading}
+                        </p>
+                        <p className="bulk-card-generator__summary-line bulk-card-generator__summary-line--answer">
+                          {summary.detail || 'No answer yet.'}
+                        </p>
+                      </div>
+
+                      {candidate.warnings.length > 0 && (
+                        <div className="bulk-card-generator__warning-note">
+                          <strong>Check this card</strong>
+                          <small>{candidate.warnings.join(' ')}</small>
+                        </div>
+                      )}
+
+                      <div className="document-import-item__actions bulk-card-generator__review-actions">
+                        <div className="inline-actions">
+                          <button
+                            className="ghost-button ghost-button--inline"
+                            disabled={saving}
+                            type="button"
+                            onClick={() => setEditingCandidateId(candidate.id)}
+                          >
+                            <PencilLine size={16} />
+                            Edit
+                          </button>
+                          <button
+                            className="button-link button-link--danger"
+                            disabled={saving}
+                            type="button"
+                            onClick={() => {
+                              if (candidate.id === editingCandidateId) {
+                                setEditingCandidateId(null)
+                              }
+                              setCandidates((current) => current.filter((item) => item.id !== candidate.id))
+                            }}
+                          >
+                            <Trash2 size={16} />
+                            Skip
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  )
+                })
+              ) : (
+                <div className="preview-card bulk-card-generator__review-empty">
+                  <strong>No cards match this filter.</strong>
+                  <small>Switch filters to review the rest of this batch.</small>
+                </div>
+              )}
+            </div>
+
+            {editingCandidate && (
+              <section
+                ref={editorRef}
+                className="editor-shell editor-shell--inline editor-shell--bulk bulk-card-generator__review-editor"
+              >
+                <div className="editor-shell__header">
+                  <div className="editor-shell__copy">
+                    <h2>Edit generated card</h2>
+                  </div>
+
+                  <div className="editor-shell__meta">
+                    <small
+                      className={`editor-shell__meta-text${
+                        editingCandidate.confidence === 'high' && editingCandidate.warnings.length === 0
+                          ? ''
+                          : ' editor-shell__meta-text--warning'
+                      }`}
+                    >
+                      {[
+                        editingCandidate.draft.type.replace('_', ' '),
+                        editingCandidate.confidence === 'high' && editingCandidate.warnings.length === 0
+                          ? null
+                          : 'Needs review',
+                      ].filter(Boolean).join(' · ')}
                     </small>
                   </div>
+                </div>
 
-                  <div className="bulk-card-generator__summary">
-                    <p className="bulk-card-generator__summary-line bulk-card-generator__summary-line--prompt">
-                      {summary.heading}
-                    </p>
-                    <p className="bulk-card-generator__summary-line">
-                      {summary.detail || 'No answer yet.'}
-                    </p>
-                  </div>
-
-                  {candidate.warnings.length > 0 && (
-                    <p className="hint-text">{candidate.warnings.join(' ')}</p>
-                  )}
-
-                  <div className="document-import-item__actions">
-                    <div className="inline-actions">
-                      <button
-                        className="ghost-button ghost-button--inline"
-                        disabled={saving}
-                        type="button"
-                        onClick={() => setEditingCandidateId(candidate.id)}
-                      >
-                        <PencilLine size={16} />
-                        Edit
-                      </button>
-                      <button
-                        className="button-link button-link--danger"
-                        disabled={saving}
-                        type="button"
-                        onClick={() => {
-                          setCandidates((current) => current.filter((item) => item.id !== candidate.id))
-                        }}
-                      >
-                        <Trash2 size={16} />
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              )
-            })}
+                <div className="editor-shell__body">
+                  <CardForm
+                    initialValue={editingCandidate.draft}
+                    isEditing
+                    onCancel={() => setEditingCandidateId(null)}
+                    onSubmit={async (draft) => {
+                      setCandidates((current) =>
+                        current.map((candidate) =>
+                          candidate.id === editingCandidate.id ? { ...candidate, draft } : candidate,
+                        ),
+                      )
+                      setEditingCandidateId(null)
+                    }}
+                  />
+                </div>
+              </section>
+            )}
           </div>
-        </div>
+        </section>
       )}
 
       {issues.length > 0 && (
@@ -1398,7 +1588,24 @@ export function BulkCardGenerator({
       )}
 
       {candidates.length > 0 && (
-        <div className="modal-actions quick-add-actions bulk-card-generator__actions">
+        <div
+          className={`modal-actions quick-add-actions bulk-card-generator__actions bulk-card-generator__actions--savebar${
+            editingCandidate ? ' bulk-card-generator__actions--savebar--editing' : ''
+          }`}
+        >
+          <div className="bulk-card-generator__save-summary">
+            <strong>{candidates.length} ready to save</strong>
+            <small>
+              {editingCandidate
+                ? 'Finish this edit or save the batch.'
+                : skippedCount > 0
+                ? `${skippedCount} skipped.`
+                : needsReviewCount > 0
+                  ? `${needsReviewCount} need a quick check.`
+                  : 'Ready to save.'}
+            </small>
+          </div>
+
           <button
             className="primary-button"
             disabled={saving}

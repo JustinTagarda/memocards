@@ -261,11 +261,7 @@ export function QuickAddComposer({
     <>
       <section className="filters-card quick-add-card">
         <div className="section-heading section-heading--toolbar">
-          <div>
-            <p className="eyebrow">Quick Add</p>
-            <h2>Add cards faster</h2>
-            <p className="quick-add-intro">Full editor stays available for tags, notes, and richer setup.</p>
-          </div>
+          <div><h2>Quick add</h2></div>
         </div>
 
         <div className="quick-add-toolbar">
@@ -318,13 +314,8 @@ export function QuickAddComposer({
           </label>
         </div>
 
-        <div className="quick-add-meta">
-          <span className="muted-label">{meta.description}</span>
-          <small>{meta.help}</small>
-        </div>
-
         <label className="field">
-          <span>{mode === 'single' ? meta.inputLabel : 'Paste cards to preview before saving'}</span>
+          <span>{mode === 'single' ? meta.inputLabel : 'Paste cards'}</span>
           <textarea
             ref={inputRef}
             rows={mode === 'single' ? 3 : 8}
@@ -342,12 +333,12 @@ export function QuickAddComposer({
 
         <small className="hint-text">
           {mode === 'single'
-            ? 'Press Enter to save quickly. Use Shift+Enter for a newline. Cmd/Ctrl+Enter also works in the full editor.'
-            : 'Preview first, then save valid rows only. Cmd/Ctrl+Enter previews or confirms the current paste.'}
+            ? 'Enter saves. Shift+Enter adds a line.'
+            : 'Preview, then save the valid rows.'}
         </small>
 
         {restoredDraft && !error && !success && (
-          <p className="hint-text">Restored your unsaved quick-entry draft on this device.</p>
+          <p className="hint-text">Draft restored.</p>
         )}
 
         {error && <p className="error-text">{error}</p>}

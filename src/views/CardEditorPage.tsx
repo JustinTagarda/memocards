@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowLeft, BookOpen, PencilLine } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import type { Route } from 'next'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
@@ -97,9 +97,9 @@ export function CardEditorPage({ mode }: CardEditorPageProps) {
   const entryDefaults = activeDeck.preferences.entryDefaults
   const createCardFallback = buildCreateCardDraft(entryDefaults, entryMemory)
   const heading = editingCard ? 'Edit card' : `Add a card to ${activeDeck.title}`
-  const intro = editingCard
-    ? 'Update the prompt, answer, tags, and study hints without squeezing the editor into a dialog.'
-    : 'Create a new card in a full page so the form stays usable on phones, tablets, and short landscape screens.'
+  const metaText = editingCard
+    ? `${activeDeck.title} · ${editingCard.tags.length} tag${editingCard.tags.length === 1 ? '' : 's'}`
+    : `${activeDeck.title} · ${activeDeck.counts.totalCards} card${activeDeck.counts.totalCards === 1 ? '' : 's'}`
 
   function rememberCreatedDraft(draft: CardDraft) {
     saveDeckEntryMemory(activeDeck.id, draft)
@@ -125,26 +125,17 @@ export function CardEditorPage({ mode }: CardEditorPageProps) {
       <section className="editor-shell editor-shell--card">
         <div className="editor-shell__header">
           <div className="editor-shell__copy">
-            <p className="eyebrow">Card</p>
             <h1>{heading}</h1>
-            <p>{intro}</p>
           </div>
 
           <div className="editor-shell__meta">
-            <span className="status-pill">
-              {editingCard ? <PencilLine size={14} /> : <BookOpen size={14} />}
-              {editingCard ? editingCard.type.replace('_', ' ') : entryDefaults.cardType.replace('_', ' ')}
-            </span>
-            <span className="status-pill">{activeDeck.title}</span>
-            <span className="status-pill">
-              {editingCard ? `${editingCard.tags.length} tags` : `${activeDeck.counts.totalCards} cards in deck`}
-            </span>
+            <small className="editor-shell__meta-text">{metaText}</small>
           </div>
         </div>
 
         {editingCard ? (
           <div className="editor-shell__note">
-            <small>Editing:</small>
+            <small>Editing</small>
             <strong>{getCardPrompt(editingCard)}</strong>
           </div>
         ) : null}

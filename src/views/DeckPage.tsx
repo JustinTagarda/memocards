@@ -1,7 +1,7 @@
 'use client'
 
 import { ArrowLeft, BookOpen, PencilLine, Plus, Search, Star, Trash2, Upload } from 'lucide-react'
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useMemo, useState } from 'react'
 import type { Route } from 'next'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
@@ -79,24 +79,13 @@ export function DeckPage() {
 
       <section className="deck-detail-hero deck-detail-hero--focus">
         <div className="deck-detail-hero__content">
-          {folder ? (
-            <span className="folder-chip" style={{ '--folder-color': folder.color } as CSSProperties}>
-              {folder.name}
-            </span>
+          {(folder || deck.tags.length > 0) ? (
+            <small className="deck-detail-hero__meta-line">
+              {[folder?.name, deck.tags.length > 0 ? deck.tags.join(', ') : null].filter(Boolean).join(' · ')}
+            </small>
           ) : null}
           <h1>{deck.title}</h1>
-          <p>{deck.description || 'Add cards, keep things tidy, and jump into study whenever you are ready.'}</p>
-          <div className="tag-row">
-            {deck.tags.length > 0 ? (
-              deck.tags.map((tag) => (
-                <span key={tag} className="tag-pill">
-                  {tag}
-                </span>
-              ))
-            ) : (
-              <span className="muted-label">No tags yet</span>
-            )}
-          </div>
+          {deck.description ? <p>{deck.description}</p> : null}
         </div>
         <div className="deck-detail-hero__actions">
           <div className="deck-detail-hero__actions-grid">
@@ -152,10 +141,7 @@ export function DeckPage() {
 
       <section className="filters-card filters-card--deck">
         <div className="section-heading">
-          <div>
-            <p className="eyebrow">Find a card</p>
-            <h2>Search this deck</h2>
-          </div>
+          <div><h2>Search cards</h2></div>
         </div>
 
         <div className="filters-grid">
@@ -203,20 +189,11 @@ export function DeckPage() {
           {filteredCards.map((card) => (
             <article key={card.id} className="card-row card-row--deck">
               <div className="card-row__copy">
-                <span className="pill">{card.type.replace('_', ' ')}</span>
                 <div className="card-row__body">
+                  <small className="card-row__kicker">{card.type.replace('_', ' ')}</small>
                   <h2>{getCardPrompt(card)}</h2>
                   <div className="card-row__answerline">
                     <p>{card.answer || card.expectedAnswer.canonical || 'No answer yet.'}</p>
-                    {card.tags.length > 0 && (
-                      <div className="tag-row">
-                        {card.tags.map((tag) => (
-                          <span key={tag} className="tag-pill">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
@@ -225,6 +202,7 @@ export function DeckPage() {
                   <small>Due {formatSmartDate(card.reviewState.dueAt)}</small>
                   <small>{card.reviewState.mastery}% learned</small>
                   <small>{card.studyStats.totalReviews} reviews</small>
+                  {card.tags.length > 0 ? <small>Tags: {card.tags.join(', ')}</small> : null}
                 </div>
                 <div className="card-row__actions card-row__actions--single">
                   <button

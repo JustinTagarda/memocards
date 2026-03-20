@@ -185,13 +185,7 @@ export function DocumentImportComposer({
       <section className="filters-card quick-add-card document-import-card">
         {showHeader && (
           <div className="section-heading">
-            <div>
-              <p className="eyebrow">Document Import</p>
-              <h2>Upload notes and build cards</h2>
-              <p className="quick-add-intro">
-                Rule-based parsing only for now. Use auto detect for mixed notes, or force a card type when your document follows one pattern.
-              </p>
-            </div>
+            <div><h2>Import notes</h2></div>
           </div>
         )}
 
@@ -224,16 +218,10 @@ export function DocumentImportComposer({
           </label>
         </div>
 
-        <small className="hint-text">
-          Supports {supportedExtensions.join(', ')}. Text-based documents only in this version.
-        </small>
-
         {selectedFile && (
           <div className="preview-card preview-card--accent document-import-summary">
             <strong>{selectedFile.name}</strong>
-            <p>
-              Ready to parse with <strong>{modeLabel(parserMode)}</strong>. Build a preview, edit or remove any card, then save only what you want.
-            </p>
+            <small>{modeLabel(parserMode)} mode</small>
           </div>
         )}
 
@@ -283,17 +271,14 @@ export function DocumentImportComposer({
           <section ref={editorRef} className="editor-shell editor-shell--inline">
             <div className="editor-shell__header">
               <div className="editor-shell__copy">
-                <p className="eyebrow">Review Candidate</p>
-                <h2>Edit parsed card</h2>
-                <p>Refine this draft before saving it back into the import list.</p>
+                <h2>Edit card</h2>
               </div>
 
               <div className="editor-shell__meta">
-                <span className="status-pill">{editingCandidate.sourceLabel}</span>
-                <span className="status-pill">{editingCandidate.draft.type.replace('_', ' ')}</span>
-                <span className="status-pill">
-                  {editingCandidate.confidence === 'high' ? 'High confidence' : 'Needs review'}
-                </span>
+                <small className="editor-shell__meta-text">{editingCandidate.sourceLabel}</small>
+                {editingCandidate.confidence !== 'high' || editingCandidate.warnings.length > 0 ? (
+                  <small className="editor-shell__meta-text editor-shell__meta-text--warning">Needs review</small>
+                ) : null}
               </div>
             </div>
 
@@ -333,7 +318,7 @@ export function DocumentImportComposer({
                     <div className="quick-add-preview__meta">
                       <strong>{candidate.sourceLabel}</strong>
                       <small>
-                        {candidate.draft.type.replace('_', ' ')} · {candidate.confidence === 'high' ? 'High confidence' : 'Review suggested'}
+                        {candidate.draft.type.replace('_', ' ')} · {candidate.confidence === 'high' ? 'Ready' : 'Review'}
                       </small>
                     </div>
 
@@ -358,7 +343,7 @@ export function DocumentImportComposer({
                             )
                           }}
                         />
-                        Save this card
+                        Keep
                       </label>
 
                       <div className="inline-actions">

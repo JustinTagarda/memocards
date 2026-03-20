@@ -258,7 +258,6 @@ export function StudySessionView({
         : Math.round((results.filter((result) => result.wasCorrect).length / results.length) * 100)
     return (
       <section className="session-summary">
-        <p className="eyebrow">Session complete</p>
         <h2>{deck.title}</h2>
         <div className="summary-grid">
           <article>
@@ -274,7 +273,7 @@ export function StudySessionView({
             <span>mode</span>
           </article>
         </div>
-        <p>{saved ? 'Your session is saved.' : saving ? 'Saving your session...' : 'Wrapping up.'}</p>
+        <small className="hint-text">{saved ? 'Saved.' : saving ? 'Saving...' : 'Wrapping up.'}</small>
         <button
           className="ghost-button"
           type="button"
@@ -299,7 +298,6 @@ export function StudySessionView({
       <section className="study-empty study-empty--clear">
         <div className="study-empty__top">
           <div className="study-empty__intro">
-          <p className="eyebrow">Study</p>
             <h2>{emptyTitle}</h2>
             <p>{emptyMessage}</p>
           </div>
@@ -353,7 +351,6 @@ export function StudySessionView({
     <section className="study-layout">
       <div className="study-header">
         <div className="study-header__copy">
-          <p className="eyebrow">Study</p>
           <h2>{deck.title}</h2>
           <p className="hint-text">{pluralize(studyQueue.length, 'card')} in this run</p>
         </div>
@@ -393,7 +390,6 @@ export function StudySessionView({
 
         <div className="study-card__content">
           <div className="study-card__header">
-            <span className="pill">{currentCard?.type.replace('_', ' ')}</span>
             <div className="inline-actions inline-actions--study">
               <label className="filter-toggle">
                 <input
@@ -457,7 +453,7 @@ export function StudySessionView({
                 <div className="ai-ready">
                   <div>
                     <Sparkles size={16} />
-                    <span>Save your written answer if you want extra review help later.</span>
+                    <span>Save your answer for later.</span>
                   </div>
                   <button
                     className="ghost-button"

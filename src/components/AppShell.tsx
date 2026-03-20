@@ -17,6 +17,7 @@ export function AppShell({ children }: PropsWithChildren) {
   const userMenuRef = useRef<HTMLDivElement | null>(null)
   const streak = profile?.summary.studyStreak ?? 0
   const dueToday = profile?.summary.dueToday ?? 0
+  const topbarSummary = `${dueToday} due today${streak > 0 ? ` · ${streak}-day streak` : ''}`
   const isHome = pathname === '/app'
   const controlsClassName = isHome ? 'app-topbar__controls app-topbar__controls--home' : 'app-topbar__controls'
   const avatarInitial = (() => {
@@ -78,17 +79,13 @@ export function AppShell({ children }: PropsWithChildren) {
               <span className="brand-mark">MC</span>
               <span className="brand-copy">
                 <strong>MemoCards</strong>
-                <small>Private study space</small>
               </span>
             </Link>
           </div>
 
           <div className={controlsClassName}>
             <div className="app-topbar__meta">
-              <div className="topbar-status" aria-label="Study summary">
-                <span className="status-pill status-pill--warm">{streak} day streak</span>
-                <span className="status-pill">{dueToday} due today</span>
-              </div>
+              <small className="topbar-summary">{topbarSummary}</small>
 
               <div className="topbar-user topbar-user--menu" ref={userMenuRef}>
                 <button
@@ -151,7 +148,6 @@ export function AppShell({ children }: PropsWithChildren) {
                 <span className="brand-mark">MC</span>
                 <span className="brand-copy">
                   <strong>MemoCards</strong>
-                  <small>Private study space</small>
                 </span>
               </Link>
             </div>
@@ -165,10 +161,7 @@ export function AppShell({ children }: PropsWithChildren) {
               </nav>
 
               <div className="app-topbar__meta">
-                <div className="topbar-status" aria-label="Study summary">
-                  <span className="status-pill status-pill--warm">{streak} day streak</span>
-                  <span className="status-pill">{dueToday} due today</span>
-                </div>
+                <small className="topbar-summary">{topbarSummary}</small>
 
                 <div className="topbar-user topbar-user--menu" ref={userMenuRef}>
                   <button

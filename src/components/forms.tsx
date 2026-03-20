@@ -81,10 +81,7 @@ export function DeckForm({ initialValue, folders, onCancel, onSubmit }: DeckForm
   return (
     <form className="stack-form deck-form" onSubmit={handleSubmit}>
       <section className="form-section">
-        <div className="form-section__heading">
-          <strong>Basics</strong>
-          <p>Name your deck and add a short note so it is easy to spot later.</p>
-        </div>
+        <div className="form-section__heading"><strong>Basics</strong></div>
 
         <label className="field">
           <span>Deck title</span>
@@ -111,10 +108,7 @@ export function DeckForm({ initialValue, folders, onCancel, onSubmit }: DeckForm
       </section>
 
       <section className="form-section">
-        <div className="form-section__heading">
-          <strong>Study setup</strong>
-          <p>Choose where this deck lives and how you want it to start.</p>
-        </div>
+        <div className="form-section__heading"><strong>Study setup</strong></div>
 
         <div className="field-grid">
           <label className="field">
@@ -151,9 +145,9 @@ export function DeckForm({ initialValue, folders, onCancel, onSubmit }: DeckForm
                 }))
               }}
             >
-              <option value="review">Review due cards</option>
-              <option value="learn">Learn all cards</option>
-              <option value="cram">Cram mode</option>
+              <option value="review">Review due</option>
+              <option value="learn">Learn all</option>
+              <option value="cram">Cram</option>
             </select>
           </label>
         </div>
@@ -174,7 +168,7 @@ export function DeckForm({ initialValue, folders, onCancel, onSubmit }: DeckForm
           </label>
 
           <label className="field">
-            <span>Cards per day</span>
+            <span>Daily goal</span>
             <input
               min={5}
               max={100}
@@ -225,16 +219,13 @@ export function DeckForm({ initialValue, folders, onCancel, onSubmit }: DeckForm
                 }))
               }}
             />
-            Play audio automatically
+            Auto-play audio
           </label>
         </div>
       </section>
 
       <section className="form-section">
-        <div className="form-section__heading">
-          <strong>New card defaults</strong>
-          <p>Use these as the starting point for Quick Add and the full card editor in this deck.</p>
-        </div>
+        <div className="form-section__heading"><strong>New card defaults</strong></div>
 
         <div className="field-grid">
           <label className="field">
@@ -254,10 +245,10 @@ export function DeckForm({ initialValue, folders, onCancel, onSubmit }: DeckForm
                 }))
               }}
             >
-              <option value="basic">Question &amp; answer</option>
-              <option value="term">Term &amp; definition</option>
+              <option value="basic">Q&amp;A</option>
+              <option value="term">Term</option>
               <option value="multiple_choice">Multiple choice</option>
-              <option value="explanation">Long answer</option>
+              <option value="explanation">Explanation</option>
             </select>
           </label>
 
@@ -546,11 +537,9 @@ export function CardForm({
 
   return (
     <form ref={formRef} className="stack-form stack-form--card" onSubmit={handleSubmit} onKeyDown={handleKeyDown}>
-      {!isEditing && (
+      {!isEditing && (restoredDraft || lastSavedDraft) && (
         <div className="form-callout">
-          <small className="hint-text">
-            {restoredDraft ? 'Restored your unsaved draft on this device.' : 'Cmd/Ctrl+Enter saves from anywhere in this form.'}
-          </small>
+          <small className="hint-text">{restoredDraft ? 'Draft restored.' : 'Reuse the last card if you want.'}</small>
           {lastSavedDraft && (
             <button
               className="ghost-button ghost-button--inline"
@@ -568,7 +557,7 @@ export function CardForm({
       )}
 
       <label className="field">
-        <span>Card type</span>
+        <span>Type</span>
         <select
           value={draft.type}
           onChange={(event) => {
@@ -578,10 +567,10 @@ export function CardForm({
             }))
           }}
         >
-          <option value="basic">Question &amp; answer</option>
-          <option value="term">Term &amp; definition</option>
+          <option value="basic">Q&amp;A</option>
+          <option value="term">Term</option>
           <option value="multiple_choice">Multiple choice</option>
-          <option value="explanation">Long answer</option>
+          <option value="explanation">Explanation</option>
         </select>
       </label>
 
@@ -755,7 +744,7 @@ export function CardForm({
             setDraft((current) => ({ ...current, isFavorite: event.target.checked }))
           }}
         />
-        Mark as favorite
+        Favorite
       </label>
 
       <div className="modal-actions modal-actions--card">
@@ -782,7 +771,7 @@ export function CardForm({
               type="button"
               onClick={onCreateMultiple}
             >
-              Create Multiple Cards
+              Bulk add
             </button>
             <button className="ghost-button" type="button" onClick={onCancel}>
               Cancel

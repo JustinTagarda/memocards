@@ -1,7 +1,7 @@
 'use client'
 
 import { BookOpen, FolderOpen, FolderPlus, History, Import, PencilLine, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ConfirmDialog } from '../components/ConfirmDialog'
@@ -59,13 +59,8 @@ export function DashboardPage() {
       <section className="dashboard-hero">
         <article className="hero-panel hero-panel--feature hero-panel--dashboard">
           <div className="hero-panel__copy">
-            <p className="eyebrow">Study home</p>
             <h1>{dueToday > 0 ? `Ready to review, ${firstName}?` : `Keep going, ${firstName}.`}</h1>
-            <p>
-              {dueToday > 0
-                ? `You have ${dueToday} card${dueToday === 1 ? '' : 's'} due today. Pick a deck and start where you left off.`
-                : 'Your due list is clear. Open a deck or try Learn mode to make a little progress today.'}
-            </p>
+            <p>{dueToday > 0 ? `${dueToday} card${dueToday === 1 ? '' : 's'} due today.` : 'Nothing due today.'}</p>
           </div>
 
           <div className="hero-panel__tools">
@@ -141,9 +136,7 @@ export function DashboardPage() {
 
       <section className="filters-card filters-card--dashboard">
         <div className="section-heading section-heading--toolbar">
-          <div>
-            <p className="eyebrow">Search and filter</p>
-          </div>
+          <div><h2>Search</h2></div>
           <small>{filteredDecks.length} showing</small>
         </div>
 
@@ -190,9 +183,8 @@ export function DashboardPage() {
       <section className="deck-grid deck-grid--dashboard">
         <div className="section-heading section-heading--toolbar">
           <div>
-            <p className="eyebrow">Your decks</p>
             <div className="section-heading__title-row">
-              <h2>Study sets</h2>
+              <h2>Decks</h2>
               <Link aria-label="Create deck" className="ghost-button ghost-button--icon section-heading__action" href="/app/decks/new">
                 <Plus size={16} />
               </Link>
@@ -219,16 +211,12 @@ export function DashboardPage() {
             <article key={deck.id} className="deck-card deck-card--dashboard">
               <div className="deck-card__header">
                 <div className="deck-card__identity">
-                  {folder ? (
-                    <span className="folder-chip" style={{ '--folder-color': folder.color } as CSSProperties}>
-                      {folder.name}
-                    </span>
-                  ) : null}
+                  {folder ? <small className="deck-card__meta-line">{folder.name}</small> : null}
                   <h2>{deck.title}</h2>
-                  <p>{deck.description || 'Add a short note so this deck is easier to spot later.'}</p>
+                  {deck.description ? <p>{deck.description}</p> : null}
                 </div>
                 <div className="deck-card__status">
-                  <span className="muted-label">{deck.counts.dueCards} due</span>
+                  <small>{deck.counts.dueCards} due</small>
                   <small>Updated {formatSmartDate(deck.updatedAt)}</small>
                 </div>
               </div>
@@ -241,20 +229,11 @@ export function DashboardPage() {
                     <span>{deck.counts.totalCards} cards</span>
                     <span>{mastery}% learned</span>
                     <span>{deck.counts.favorites} favorites</span>
-                    {deck.tags.length === 0 ? <span className="muted-label metrics-row__status">No tags yet</span> : null}
                   </div>
                 </div>
 
                 <div className="deck-card__footer deck-card__footer--dashboard">
-                  {deck.tags.length > 0 ? (
-                    <div className="tag-row">
-                      {deck.tags.map((tag) => (
-                        <span key={tag} className="tag-pill">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
+                  {deck.tags.length > 0 ? <small className="deck-card__meta-line">Tags: {deck.tags.join(', ')}</small> : null}
                   <div className="deck-card__actions">
                     <div className="deck-card__actions-main">
                       <button

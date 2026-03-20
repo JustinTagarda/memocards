@@ -68,18 +68,14 @@ export function LandingPage() {
           <span className="brand-mark">MC</span>
           <span>
             <strong>MemoCards</strong>
-            <small>Private study space</small>
           </span>
         </Link>
       </header>
 
       <section className="landing-hero">
         <div className="landing-copy">
-          <p className="eyebrow">Study cards, made simple</p>
           <h1>Study with cards that strengthen your memory and thinking skills.</h1>
-          <p className="landing-summary">
-            Create personalized decks and review them anytime on any device.
-          </p>
+          <p className="landing-summary">Build decks and review them anywhere.</p>
 
           {!hasSupabaseEnvironment && !isLocalDevBypassEnabled && (
             <div className="warning-banner">
@@ -128,12 +124,6 @@ export function LandingPage() {
                 {copiedLink ? 'Link copied' : 'Copy site link'}
               </button>
             )}
-          </div>
-
-          <div className="landing-notes">
-            <span>Smart review</span>
-            <span>Audio when you want it</span>
-            <span>Private study space</span>
           </div>
         </div>
 

@@ -78,12 +78,8 @@ export function DocumentImportPage() {
       <section className="dashboard-hero dashboard-hero--single document-import-hero">
         <article className="hero-panel hero-panel--feature hero-panel--dashboard">
           <div className="hero-panel__copy">
-            <p className="eyebrow">Document Import</p>
             <h1>Import notes into {activeDeck.title}</h1>
-            <p>
-              Upload a text document, let the rule-based parser build draft cards, then review, edit,
-              or remove anything before saving to this deck.
-            </p>
+            <p>Upload a text file, review the parsed cards, then save what you want.</p>
           </div>
 
           <div className="hero-panel__tools">
