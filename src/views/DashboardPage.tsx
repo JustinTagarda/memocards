@@ -135,11 +135,6 @@ export function DashboardPage() {
       </section>
 
       <section className="filters-card filters-card--dashboard">
-        <div className="section-heading section-heading--toolbar">
-          <div><h2>Search</h2></div>
-          <small>{filteredDecks.length} showing</small>
-        </div>
-
         <div className="filters-grid">
           <label className="field filter-field">
             <span>Search</span>

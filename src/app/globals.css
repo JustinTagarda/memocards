@@ -1058,6 +1058,16 @@ textarea:focus {
   gap: 0.5rem;
 }
 
+.filters-card--dashboard {
+  gap: 0.38rem;
+  padding: 0.76rem 0.82rem;
+}
+
+.filters-card--deck {
+  gap: 0.35rem;
+  padding: 0.72rem 0.8rem;
+}
+
 .filters-card--dashboard .section-heading,
 .filters-card--deck .section-heading {
   gap: 0.2rem;
@@ -2520,6 +2530,55 @@ input[type='file'] {
   gap: var(--space-2);
 }
 
+.filters-card--dashboard .field {
+  gap: 0.3rem;
+}
+
+.filters-card--dashboard .field span {
+  font-size: 0.76rem;
+  line-height: 1.15;
+}
+
+.filters-card--dashboard .field :is(select, input) {
+  min-height: 2.3rem;
+  padding: 0.56rem 0.72rem;
+}
+
+.filters-card--dashboard .search-box {
+  gap: 0.5rem;
+  min-height: 2.3rem;
+  padding: 0.56rem 0.72rem;
+}
+
+.filters-card--deck .field {
+  gap: 0.3rem;
+}
+
+.filters-card--deck .field span {
+  font-size: 0.76rem;
+  line-height: 1.15;
+}
+
+.filters-card--deck .field :is(select, input) {
+  min-height: 2.3rem;
+  padding: 0.56rem 0.72rem;
+}
+
+.filters-card--deck .search-box {
+  gap: 0.5rem;
+  min-height: 2.3rem;
+  padding: 0.56rem 0.72rem;
+}
+
+.filters-card--deck .filter-toggle {
+  min-height: 2.3rem;
+  padding: 0.56rem 0.72rem;
+}
+
+.filters-card--dashboard .filters-grid {
+  gap: 0.48rem;
+}
+
 .filter-field {
   min-width: 0;
 }
@@ -3732,8 +3791,8 @@ input[type='file'] {
   }
 
   .filters-card--deck {
-    gap: 0.4rem;
-    padding: 0.9rem;
+    gap: 0.3rem;
+    padding: 0.68rem 0.78rem;
   }
 
   .filters-card--deck .section-heading {
@@ -3745,12 +3804,12 @@ input[type='file'] {
   }
 
   .filters-card--deck .filters-grid {
-    gap: 0.55rem;
+    gap: 0.45rem;
   }
 
   .filters-card--deck .filter-toggle {
-    min-height: 2.4rem;
-    padding: 0.68rem 0.8rem;
+    min-height: 2.2rem;
+    padding: 0.52rem 0.68rem;
     font-size: 0.78rem;
   }
 
@@ -4015,11 +4074,16 @@ input[type='file'] {
   }
 
   .filters-card--dashboard {
-    gap: 0.4rem;
+    gap: 0.32rem;
+    padding: 0.68rem 0.78rem;
   }
 
   .filters-card--dashboard .section-heading--toolbar {
-    gap: 0.3rem;
+    gap: 0.22rem;
+  }
+
+  .filters-card--dashboard .filters-grid {
+    gap: 0.42rem;
   }
 
   .page-stack--editor {
@@ -4201,8 +4265,8 @@ input[type='file'] {
   }
 
   .filters-card--deck {
-    gap: 0.35rem;
-    padding: 0.8rem;
+    gap: 0.26rem;
+    padding: 0.62rem 0.7rem;
   }
 
   .filters-card--deck .section-heading {
@@ -4214,12 +4278,12 @@ input[type='file'] {
   }
 
   .filters-card--deck .filters-grid {
-    gap: 0.45rem;
+    gap: 0.38rem;
   }
 
   .filters-card--deck .filter-toggle {
-    min-height: 2rem;
-    padding: 0.56rem 0.72rem;
+    min-height: 1.95rem;
+    padding: 0.48rem 0.64rem;
     font-size: 0.74rem;
   }
 

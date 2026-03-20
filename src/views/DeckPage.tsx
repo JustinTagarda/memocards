@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowLeft, BookOpen, PencilLine, Plus, Search, Star, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, BookOpen, PencilLine, Plus, Search, Sparkles, Star, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { Route } from 'next'
 import Link from 'next/link'
@@ -111,9 +111,9 @@ export function DeckPage() {
               <Plus size={16} />
               Add card
             </Link>
-            <Link className="ghost-button" href={`/app/decks/${deck.id}/import` as Route}>
-              <Upload size={16} />
-              Import notes
+            <Link className="ghost-button" href={`/app/decks/${deck.id}/cards/bulk` as Route}>
+              <Sparkles size={16} />
+              Generate cards
             </Link>
             <ExportMenu deck={deck} cards={cards} />
           </div>
@@ -140,10 +140,6 @@ export function DeckPage() {
       </section>
 
       <section className="filters-card filters-card--deck">
-        <div className="section-heading">
-          <div><h2>Search cards</h2></div>
-        </div>
-
         <div className="filters-grid">
           <label className="field filter-field">
             <span>Search</span>
