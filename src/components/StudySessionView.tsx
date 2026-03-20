@@ -1,16 +1,22 @@
 'use client'
 
-import { Headphones, RotateCcw, Sparkles, Volume2 } from 'lucide-react'
+import { Headphones, RotateCcw, SlidersHorizontal, Sparkles, Volume2 } from 'lucide-react'
 import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { getCardAnswer, getCardPrompt } from '../lib/cardText'
 import { formatSmartDate, pluralize, shuffleArray } from '../lib/utils'
 import type { Card, Deck, SelfAssessment, SessionCardResult, StudyMode } from '../types/models'
 
-const AUTO_PLAY_AUDIO_SESSION_KEY = 'memocards:study:auto-play-audio'
+const studyModeLabels: Record<StudyMode, string> = {
+  review: 'Review due',
+  learn: 'Learn all',
+  cram: 'Cram',
+}
 
 interface StudySessionViewProps {
   deck: Deck
   cards: Card[]
+  autoPlayAudio: boolean
+  autoPlayAudioDisabled?: boolean
   onReview: (
     card: Card,
     assessment: SelfAssessment,
@@ -18,6 +24,7 @@ interface StudySessionViewProps {
     responseText: string,
   ) => Promise<void>
   onComplete: (mode: StudyMode, startedAt: string, results: SessionCardResult[]) => Promise<void>
+  onAutoPlayAudioChange: (enabled: boolean) => Promise<void> | void
   onQueueEvaluation: (card: Card, submittedAnswer: string) => Promise<'queued' | 'disabled' | void>
   onPlayAudio: (card: Card, side: 'prompt' | 'answer') => Promise<void>
   onWarmAudio?: (card: Card, side: 'prompt' | 'answer') => Promise<void> | void
@@ -78,8 +85,11 @@ const assessments: Array<{ value: SelfAssessment; label: string; hint: string; t
 export function StudySessionView({
   deck,
   cards,
+  autoPlayAudio,
+  autoPlayAudioDisabled = false,
   onReview,
   onComplete,
+  onAutoPlayAudioChange,
   onQueueEvaluation,
   onPlayAudio,
   onWarmAudio,
@@ -99,8 +109,7 @@ export function StudySessionView({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [evaluationStatus, setEvaluationStatus] = useState<string | null>(null)
-  const [autoPlayAudio, setAutoPlayAudio] = useState(false)
-  const [autoPlayAudioReady, setAutoPlayAudioReady] = useState(false)
+  const [mobileOptionsOpen, setMobileOptionsOpen] = useState(false)
 
   const cardsById = useMemo(
     () => new Map(cards.map((card) => [card.id, card])),
@@ -114,6 +123,11 @@ export function StudySessionView({
   const currentCard = studyQueue[currentIndex] ?? null
   const nextCard = studyQueue[currentIndex + 1] ?? null
   const progress = studyQueue.length === 0 ? 0 : Math.min(100, (currentIndex / studyQueue.length) * 100)
+  const mobileOptionsSummary = [
+    studyModeLabels[mode],
+    shuffle ? 'Shuffled' : 'In order',
+    favoritesOnly ? 'Favorites only' : 'All cards',
+  ].join(' · ')
   const sessionFinished = studyQueue.length > 0 && currentIndex >= studyQueue.length
   const noCardsInDeck = cards.length === 0
   const emptyTitle = noCardsInDeck
@@ -128,23 +142,6 @@ export function StudySessionView({
       : 'Try turning off favorites only or switch modes to keep going.'
   const playAudioForCard = useEffectEvent(onPlayAudio)
   const warmAudioForCard = useEffectEvent(onWarmAudio ?? (() => undefined))
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    setAutoPlayAudio(window.sessionStorage.getItem(AUTO_PLAY_AUDIO_SESSION_KEY) === 'true')
-    setAutoPlayAudioReady(true)
-  }, [])
-
-  useEffect(() => {
-    if (!autoPlayAudioReady || typeof window === 'undefined') {
-      return
-    }
-
-    window.sessionStorage.setItem(AUTO_PLAY_AUDIO_SESSION_KEY, autoPlayAudio ? 'true' : 'false')
-  }, [autoPlayAudio, autoPlayAudioReady])
 
   useEffect(() => {
     setMode(deck.preferences.defaultMode)
@@ -162,6 +159,7 @@ export function StudySessionView({
     setSaving(false)
     setSaved(false)
     setEvaluationStatus(null)
+    setMobileOptionsOpen(false)
   }, [deck.id, deck.preferences.defaultMode, deck.preferences.shuffleByDefault])
 
   useEffect(() => {
@@ -174,6 +172,7 @@ export function StudySessionView({
     setSelectedChoiceId(null)
     setSaved(false)
     setEvaluationStatus(null)
+    setMobileOptionsOpen(false)
   }, [mode, shuffle, favoritesOnly])
 
   async function handleFinish(completedResults = results) {
@@ -232,12 +231,12 @@ export function StudySessionView({
   }, [results.length, saved, saving, sessionFinished])
 
   useEffect(() => {
-    if (!autoPlayAudioReady || !autoPlayAudio || revealed || !currentCard) {
+    if (!autoPlayAudio || revealed || !currentCard) {
       return
     }
 
     void playAudioForCard(currentCard, 'prompt')
-  }, [autoPlayAudio, autoPlayAudioReady, currentCard?.id, revealed])
+  }, [autoPlayAudio, currentCard?.id, revealed])
 
   useEffect(() => {
     if (!currentCard) {
@@ -354,7 +353,27 @@ export function StudySessionView({
           <h2>{deck.title}</h2>
           <p className="hint-text">{pluralize(studyQueue.length, 'card')} in this run</p>
         </div>
-        <div className="study-toolbar study-toolbar--active">
+        <div className="study-header__mobile-toggle">
+          <span className="study-header__summary">{mobileOptionsSummary}</span>
+          <button
+            aria-controls="study-session-options"
+            aria-expanded={mobileOptionsOpen}
+            className="ghost-button study-header__options-toggle"
+            type="button"
+            onClick={() => setMobileOptionsOpen((open) => !open)}
+          >
+            <SlidersHorizontal size={16} />
+            Session options
+          </button>
+        </div>
+        <div
+          id="study-session-options"
+          className={
+            mobileOptionsOpen
+              ? 'study-toolbar study-toolbar--active study-toolbar--mobile-open'
+              : 'study-toolbar study-toolbar--active study-toolbar--mobile-collapsed'
+          }
+        >
           <label className="inline-field">
             <span>Mode</span>
             <select value={mode} onChange={(event) => setMode(event.target.value as StudyMode)}>
@@ -388,14 +407,17 @@ export function StudySessionView({
           <span>{currentCard ? `Due ${formatSmartDate(currentCard.reviewState.dueAt)}` : ''}</span>
         </div>
 
-        <div className="study-card__content">
+        <div className={revealed ? 'study-card__content study-card__content--revealed' : 'study-card__content'}>
           <div className="study-card__header">
             <div className="inline-actions inline-actions--study">
               <label className="filter-toggle">
                 <input
+                  disabled={autoPlayAudioDisabled}
                   checked={autoPlayAudio}
                   type="checkbox"
-                  onChange={(event) => setAutoPlayAudio(event.target.checked)}
+                  onChange={(event) => {
+                    void onAutoPlayAudioChange(event.target.checked)
+                  }}
                 />
                 <Volume2 size={16} />
                 Auto-play audio
@@ -403,7 +425,7 @@ export function StudySessionView({
             </div>
           </div>
 
-          <div className="study-face">
+          <div className={revealed ? 'study-face study-face--revealed' : 'study-face'}>
             <h3>{currentCard ? getCardPrompt(currentCard) : ''}</h3>
             {currentCard?.type === 'multiple_choice' && (
               <div className="choice-stack">
@@ -441,7 +463,7 @@ export function StudySessionView({
             )}
           </div>
 
-          {revealed ? (
+          {revealed && (
             <div className="answer-panel">
               <div className="answer-panel__header">
                 <Headphones size={18} />
@@ -478,6 +500,31 @@ export function StudySessionView({
               )}
               {evaluationStatus && <p className="hint-text">{evaluationStatus}</p>}
             </div>
+          )}
+        </div>
+
+        <div className={revealed ? 'study-card__actions study-card__actions--revealed' : 'study-card__actions'}>
+          {revealed ? (
+            <div className="assessment-row">
+              {assessments.map((assessment) => (
+                <button
+                  key={assessment.value}
+                  aria-describedby={`assessment-tip-${assessment.value}`}
+                  className="assessment-button"
+                  title={assessment.tooltip}
+                  type="button"
+                  onClick={() => {
+                    void handleAssessment(assessment.value)
+                  }}
+                >
+                  <strong>{assessment.label}</strong>
+                  <small>{assessment.hint}</small>
+                  <span id={`assessment-tip-${assessment.value}`} className="assessment-button__tooltip" role="tooltip">
+                    {assessment.tooltip}
+                  </span>
+                </button>
+              ))}
+            </div>
           ) : (
             <button
               className="primary-button"
@@ -489,29 +536,6 @@ export function StudySessionView({
             </button>
           )}
         </div>
-
-        {revealed && (
-          <div className="assessment-row">
-            {assessments.map((assessment) => (
-              <button
-                key={assessment.value}
-                aria-describedby={`assessment-tip-${assessment.value}`}
-                className="assessment-button"
-                title={assessment.tooltip}
-                type="button"
-                onClick={() => {
-                  void handleAssessment(assessment.value)
-                }}
-              >
-                <strong>{assessment.label}</strong>
-                <small>{assessment.hint}</small>
-                <span id={`assessment-tip-${assessment.value}`} className="assessment-button__tooltip" role="tooltip">
-                  {assessment.tooltip}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
       </div>
     </section>
   )

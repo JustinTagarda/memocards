@@ -448,6 +448,13 @@ export async function fetchRecentSessions() {
   return clone(store.sessions.slice(0, 6))
 }
 
+export async function updateUserAutoPlayAudio(autoPlayAudio: boolean) {
+  store.settings = {
+    ...store.settings,
+    autoPlayAudio,
+  }
+}
+
 export async function saveDeck(draft: DeckDraft, deckId?: string) {
   const timestamp = nowIso()
   if (deckId) {

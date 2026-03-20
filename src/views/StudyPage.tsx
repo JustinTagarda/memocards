@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { StudySessionView } from '../components/StudySessionView'
 import { useAuth } from '../hooks/useAuth'
-import { useCards, useDeck } from '../hooks/useMemoCards'
+import { useAutoPlayAudioPreference, useCards, useDeck } from '../hooks/useMemoCards'
 import { buildCachedAudioKey, queueAnswerEvaluation, recordStudySession, requestCardAudio, reviewCard } from '../services/memocards'
 import type { Card, SelfAssessment, SessionCardResult, StudyMode } from '../types/models'
 
@@ -16,6 +16,12 @@ export function StudyPage() {
   const { user } = useAuth()
   const { data: deck, loading: deckLoading } = useDeck(user?.id, deckId)
   const { data: cards, loading: cardsLoading } = useCards(user?.id, deckId)
+  const {
+    autoPlayAudio,
+    loading: autoPlayAudioLoading,
+    saving: autoPlayAudioSaving,
+    setAutoPlayAudio,
+  } = useAutoPlayAudioPreference(user?.id)
   const [audioMessage, setAudioMessage] = useState<string | null>(null)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -116,6 +122,8 @@ export function StudyPage() {
       {audioMessage && <div className="warning-banner">{audioMessage}</div>}
 
       <StudySessionView
+        autoPlayAudio={autoPlayAudio}
+        autoPlayAudioDisabled={autoPlayAudioLoading || autoPlayAudioSaving}
         cards={cards}
         deck={activeDeck}
         onComplete={async (mode: StudyMode, startedAt: string, results: SessionCardResult[]) => {
@@ -123,6 +131,16 @@ export function StudyPage() {
             return
           }
           await recordStudySession(user.id, activeDeck, mode, startedAt, results)
+        }}
+        onAutoPlayAudioChange={async (enabled: boolean) => {
+          setAudioMessage(null)
+          try {
+            await setAutoPlayAudio(enabled)
+          } catch (reason) {
+            setAudioMessage(
+              reason instanceof Error ? reason.message : 'Unable to update the audio preference right now.',
+            )
+          }
         }}
         onPlayAudio={playAudio}
         onWarmAudio={warmAudio}

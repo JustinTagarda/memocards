@@ -506,6 +506,26 @@ export async function fetchUserProfile(uid: string) {
   return normalizeProfile(profileRow, settingsRow, decks)
 }
 
+export async function updateUserAutoPlayAudio(uid: string, autoPlayAudio: boolean) {
+  if (isLocalDevBypassUserId(uid)) {
+    await devBypassStore.updateUserAutoPlayAudio(autoPlayAudio)
+    notifyDataChanged()
+    return
+  }
+
+  await assertNoError(
+    memocardsSchema()
+      .from('user_settings')
+      .update({
+        auto_play_audio: autoPlayAudio,
+        updated_at: nowIso(),
+      })
+      .eq('user_id', uid),
+  )
+
+  notifyDataChanged()
+}
+
 export async function fetchFolders(uid: string) {
   if (isLocalDevBypassUserId(uid)) {
     return devBypassStore.fetchFolders()

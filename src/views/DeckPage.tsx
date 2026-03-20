@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowLeft, BookOpen, PencilLine, Plus, Search, Sparkles, Star, Trash2 } from 'lucide-react'
+import { ArrowLeft, BookOpen, PencilLine, Plus, Search, Sparkles, Star, Trash2, Volume2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { Route } from 'next'
 import Link from 'next/link'
@@ -8,7 +8,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ExportMenu } from '../components/forms'
 import { useAuth } from '../hooks/useAuth'
-import { useCards, useDeck, useFolders } from '../hooks/useMemoCards'
+import { useAutoPlayAudioPreference, useCards, useDeck, useFolders } from '../hooks/useMemoCards'
 import { getCardPrompt, getCardSearchText } from '../lib/cardText'
 import { formatSmartDate } from '../lib/utils'
 import { deleteCard, deleteDeck, toggleCardFavorite } from '../services/memocards'
@@ -22,12 +22,19 @@ export function DeckPage() {
   const { data: folders } = useFolders(user?.id)
   const { data: deck, loading: deckLoading } = useDeck(user?.id, deckId)
   const { data: cards, loading: cardsLoading } = useCards(user?.id, deckId)
+  const {
+    autoPlayAudio,
+    loading: autoPlayAudioLoading,
+    saving: autoPlayAudioSaving,
+    setAutoPlayAudio,
+  } = useAutoPlayAudioPreference(user?.id)
 
   const [search, setSearch] = useState('')
   const [tagFilter, setTagFilter] = useState('all')
   const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [showDeleteDeckDialog, setShowDeleteDeckDialog] = useState(false)
   const [cardToDelete, setCardToDelete] = useState<Card | null>(null)
+  const [audioPreferenceMessage, setAudioPreferenceMessage] = useState<string | null>(null)
 
   const tags = useMemo(
     () => Array.from(new Set(cards.flatMap((card) => card.tags))).sort((left, right) => left.localeCompare(right)),
@@ -86,6 +93,27 @@ export function DeckPage() {
           ) : null}
           <h1>{deck.title}</h1>
           {deck.description ? <p>{deck.description}</p> : null}
+          <div className="deck-detail-hero__utilities">
+            <label className="filter-toggle deck-detail-hero__audio-toggle">
+              <input
+                checked={autoPlayAudio}
+                disabled={autoPlayAudioLoading || autoPlayAudioSaving}
+                type="checkbox"
+                onChange={(event) => {
+                  setAudioPreferenceMessage(null)
+                  void setAutoPlayAudio(event.target.checked).catch((reason) => {
+                    setAudioPreferenceMessage(
+                      reason instanceof Error
+                        ? reason.message
+                        : 'Unable to update the audio preference right now.',
+                    )
+                  })
+                }}
+              />
+              <Volume2 size={16} />
+              Auto-play audio
+            </label>
+          </div>
         </div>
         <div className="deck-detail-hero__actions">
           <div className="deck-detail-hero__actions-grid">
@@ -119,6 +147,8 @@ export function DeckPage() {
           </div>
         </div>
       </section>
+
+      {audioPreferenceMessage && <div className="warning-banner">{audioPreferenceMessage}</div>}
 
       <section className="summary-grid summary-grid--deck">
         <article className="summary-card">

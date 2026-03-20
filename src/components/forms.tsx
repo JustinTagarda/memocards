@@ -204,23 +204,6 @@ export function DeckForm({ initialValue, folders, onCancel, onSubmit }: DeckForm
             />
             Shuffle cards
           </label>
-
-          <label>
-            <input
-              checked={draft.preferences.autoPlayAudio}
-              type="checkbox"
-              onChange={(event) => {
-                setDraft((current) => ({
-                  ...current,
-                  preferences: {
-                    ...current.preferences,
-                    autoPlayAudio: event.target.checked,
-                  },
-                }))
-              }}
-            />
-            Auto-play audio
-          </label>
         </div>
       </section>
 

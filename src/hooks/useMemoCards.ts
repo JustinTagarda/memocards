@@ -18,6 +18,7 @@ import {
   fetchRecentSessions,
   fetchUserProfile,
   subscribeToDataChanged,
+  updateUserAutoPlayAudio,
 } from '../services/memocards'
 
 interface ResourceState<T> {
@@ -80,6 +81,39 @@ function useResource<T>(
 
 export function useUserProfile(uid: string | undefined): ResourceState<UserProfile | null> {
   return useResource(uid ?? null, null, () => fetchUserProfile(uid!))
+}
+
+export function useAutoPlayAudioPreference(uid: string | undefined) {
+  const { data: profile, loading } = useUserProfile(uid)
+  const [optimisticValue, setOptimisticValue] = useState<boolean | null>(null)
+  const [saving, setSaving] = useState(false)
+  const updatePreference = useEffectEvent(async (nextValue: boolean) => {
+    if (!uid) {
+      return
+    }
+
+    setOptimisticValue(nextValue)
+    setSaving(true)
+    try {
+      await updateUserAutoPlayAudio(uid, nextValue)
+    } catch (reason) {
+      setOptimisticValue(null)
+      throw reason
+    } finally {
+      setSaving(false)
+    }
+  })
+
+  useEffect(() => {
+    setOptimisticValue(null)
+  }, [profile?.settings.autoPlayAudio, uid])
+
+  return {
+    autoPlayAudio: optimisticValue ?? profile?.settings.autoPlayAudio ?? false,
+    loading: loading && !profile,
+    saving,
+    setAutoPlayAudio: updatePreference,
+  }
 }
 
 export function useFolders(uid: string | undefined): ResourceState<Folder[]> {
