@@ -4072,6 +4072,13 @@ input[type='file'] {
   }
 }
 
+@media (max-width: 47.99rem) {
+  .topbar-status,
+  .topbar-summary {
+    display: none !important;
+  }
+}
+
 @media (orientation: portrait) and (min-width: 24.375rem) and (max-width: 47.99rem) {
   .deck-detail-hero__actions-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
