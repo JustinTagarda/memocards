@@ -151,7 +151,7 @@ export function CardEditorPage({ mode }: CardEditorPageProps) {
               editingCard
                 ? undefined
                 : () => {
-                    router.push(`/app/decks/${activeDeck.id}/cards/bulk` as Route)
+                    router.push(`/app/decks/${activeDeck.id}/questions/generate` as Route)
                   }
             }
             onCancel={() => router.push(backHref as Route)}

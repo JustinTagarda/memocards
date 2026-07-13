@@ -84,7 +84,7 @@ export function BulkCardGeneratorPage() {
       <section className="editor-shell editor-shell--deck editor-shell--bulk">
         <div className="editor-shell__header">
           <div className="editor-shell__copy">
-            <h1>Create multiple cards for {activeDeck.title}</h1>
+            <h1>Generate questions for {activeDeck.title}</h1>
           </div>
 
           <div className="editor-shell__meta">

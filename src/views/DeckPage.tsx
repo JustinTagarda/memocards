@@ -139,9 +139,9 @@ export function DeckPage() {
               <Plus size={16} />
               Add card
             </Link>
-            <Link className="ghost-button" href={`/app/decks/${deck.id}/cards/bulk` as Route}>
+            <Link className="ghost-button" href={`/app/decks/${deck.id}/questions/generate` as Route}>
               <Sparkles size={16} />
-              Generate cards
+              Generate questions
             </Link>
             <ExportMenu deck={deck} cards={cards} />
           </div>

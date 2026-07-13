@@ -3,6 +3,8 @@ const TECH_STACK = [
   'React 19',
   'TypeScript',
   'Supabase',
+  'Google Cloud Vision',
+  'Vertex AI',
   'Google Cloud Text-to-Speech',
 ]
 

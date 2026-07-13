@@ -75,7 +75,7 @@ export function LandingPage() {
       <section className="landing-hero">
         <div className="landing-copy">
           <h1>Study with cards that strengthen your memory and thinking skills.</h1>
-          <p className="landing-summary">Build decks and review them anywhere.</p>
+          <p className="landing-summary">Build decks, paste cards quickly, and review anywhere.</p>
 
           {!hasSupabaseEnvironment && !isLocalDevBypassEnabled && (
             <div className="warning-banner">

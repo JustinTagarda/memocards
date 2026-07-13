@@ -20,6 +20,7 @@ import {
   type DocumentParseIssue,
   type DocumentParserMode,
   type DocumentParseResult,
+  supportsDocumentFile,
 } from '../lib/documentParser'
 import { summarizeQuickAddDraft } from '../lib/quickAdd'
 import {
@@ -395,6 +396,7 @@ export function BulkCardGenerator({
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all')
   const [cropEditor, setCropEditor] = useState<ActiveImageCrop | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const cameraInputRef = useRef<HTMLInputElement | null>(null)
   const cropStageRef = useRef<HTMLDivElement | null>(null)
   const imageItemsRef = useRef<PendingImage[]>([])
@@ -549,7 +551,7 @@ export function BulkCardGenerator({
     updater: (image: PendingImage) => PendingImage,
   ) {
     replaceImageItems(
-      imageItems.map((item) => (item.id === imageId ? updater(item) : item)),
+      imageItemsRef.current.map((item) => (item.id === imageId ? updater(item) : item)),
     )
   }
 
@@ -1028,6 +1030,7 @@ export function BulkCardGenerator({
   }
 
   function appendImageFiles(files: FileList | File[]) {
+    const currentItems = imageItemsRef.current
     const incoming = Array.from(files).filter((file) => file.type.startsWith('image/'))
 
     if (incoming.length === 0) {
@@ -1035,7 +1038,7 @@ export function BulkCardGenerator({
       return
     }
 
-    const nextTotal = imageItems.length + incoming.length
+    const nextTotal = currentItems.length + incoming.length
     if (nextTotal > 12) {
       setError('Use up to 12 images at a time.')
       return
@@ -1045,9 +1048,68 @@ export function BulkCardGenerator({
     clearPreview()
     setSourceMode('images')
     replaceImageItems([
-      ...imageItems,
-      ...incoming.map((file, index) => createPendingImage(file, imageItems.length + index)),
+      ...currentItems,
+      ...incoming.map((file, index) => createPendingImage(file, currentItems.length + index)),
     ])
+  }
+
+  function isSupportedTextFile(file: File) {
+    return file.type.startsWith('text/') || supportsDocumentFile(file.name)
+  }
+
+  async function handleGenericFileLoad(files: FileList | File[]) {
+    const incoming = Array.from(files).filter((file) => Boolean(file))
+
+    if (incoming.length === 0) {
+      setError('Choose a file to load.')
+      return
+    }
+
+    const imageFiles = incoming.filter((file) => file.type.startsWith('image/'))
+    const textFiles = incoming.filter((file) => isSupportedTextFile(file))
+    const unsupportedFiles = incoming.filter((file) => !file.type.startsWith('image/') && !isSupportedTextFile(file))
+
+    if (unsupportedFiles.length > 0) {
+      setError(
+        `Unsupported file type${unsupportedFiles.length === 1 ? '' : 's'}: ${unsupportedFiles
+          .map((file) => file.name)
+          .join(', ')}. Use text documents or images.`,
+      )
+      return
+    }
+
+    if (imageFiles.length > 0 && textFiles.length > 0) {
+      setError('Load either text documents or images in one batch.')
+      return
+    }
+
+    if (imageFiles.length > 0) {
+      appendImageFiles(imageFiles)
+      return
+    }
+
+    const [file] = textFiles
+    if (!file) {
+      setError('Choose a text document or image file.')
+      return
+    }
+
+    try {
+      const content = await file.text()
+      if (!content.trim()) {
+        setError('That file is empty.')
+        return
+      }
+
+      resetFeedback()
+      clearPreview()
+      replaceImageItems([])
+      setCropEditor(null)
+      setSourceMode('text')
+      setSourceText(content)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Unable to read that file.')
+    }
   }
 
   return (
@@ -1071,11 +1133,11 @@ export function BulkCardGenerator({
             >
               Paste text / Q&amp;A
             </button>
-            <button
-              aria-pressed={sourceMode === 'images'}
-              className={sourceMode === 'images' ? 'choice-pill choice-pill--selected' : 'choice-pill'}
-              type="button"
-              onClick={() => {
+              <button
+                aria-pressed={sourceMode === 'images'}
+                className={sourceMode === 'images' ? 'choice-pill choice-pill--selected' : 'choice-pill'}
+                type="button"
+                onClick={() => {
                 setSourceMode('images')
                 setCropEditor(null)
                 resetFeedback()
@@ -1136,6 +1198,27 @@ export function BulkCardGenerator({
               />
 
               <div className="bulk-card-generator__image-toolbar">
+                <input
+                  ref={fileInputRef}
+                  accept=".txt,.md,.markdown,.text,.tsv,image/*"
+                  className="bulk-card-generator__hidden-input"
+                  multiple
+                  type="file"
+                  onChange={(event) => {
+                    if (event.target.files) {
+                      void handleGenericFileLoad(event.target.files)
+                    }
+                    event.currentTarget.value = ''
+                  }}
+                />
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <ImagePlus size={16} />
+                  Load file
+                </button>
                 <button
                   className="ghost-button"
                   type="button"
@@ -1155,7 +1238,7 @@ export function BulkCardGenerator({
               </div>
 
               <small className="hint-text">
-                Add notes or Q&amp;A sheets. The app detects the format after OCR.
+                Load text documents or images. Text files go straight into the parser, and images go through OCR.
               </small>
 
               {imageItems.length > 0 ? (
@@ -1448,7 +1531,7 @@ export function BulkCardGenerator({
               }}
             >
               <Sparkles size={16} />
-              {parsing ? 'Generating...' : 'Generate cards'}
+              {parsing ? 'Generating...' : 'Generate questions'}
             </button>
 
             <button
