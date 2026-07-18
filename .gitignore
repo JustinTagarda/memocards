@@ -33,3 +33,7 @@ out
 # Local tool caches and staging areas
 .cache/
 .codex_stage/
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/
