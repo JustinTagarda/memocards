@@ -83,7 +83,13 @@ export function triggerDownload(filename: string, content: string, type: string)
 }
 
 export function startOfLocalDayKey(iso = nowIso()) {
-  return iso.slice(0, 10)
+  const date = parseISO(iso)
+  if (Number.isNaN(date.getTime())) {
+    return iso.slice(0, 10)
+  }
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
 }
 
 export function pluralize(count: number, singular: string, plural = `${singular}s`) {

@@ -8,7 +8,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ExportMenu } from '../components/forms'
 import { useAuth } from '../hooks/useAuth'
-import { useAutoPlayAudioPreference, useCards, useDeck, useFolders } from '../hooks/useMemoCards'
+import { firstResourceError, useAutoPlayAudioPreference, useCards, useDeck, useFolders } from '../hooks/useMemoCards'
 import { getCardPrompt, getCardSearchText } from '../lib/cardText'
 import { formatSmartDate } from '../lib/utils'
 import { deleteCard, deleteDeck, toggleCardFavorite } from '../services/memocards'
@@ -20,8 +20,9 @@ export function DeckPage() {
   const router = useRouter()
   const { user } = useAuth()
   const { data: folders } = useFolders(user?.id)
-  const { data: deck, loading: deckLoading } = useDeck(user?.id, deckId)
-  const { data: cards, loading: cardsLoading } = useCards(user?.id, deckId)
+  const { data: deck, loading: deckLoading, error: deckError } = useDeck(user?.id, deckId)
+  const { data: cards, loading: cardsLoading, error: cardsError } = useCards(user?.id, deckId)
+  const loadError = firstResourceError(deckError, cardsError)
   const {
     autoPlayAudio,
     loading: autoPlayAudioLoading,
@@ -148,6 +149,7 @@ export function DeckPage() {
         </div>
       </section>
 
+      {loadError && <div className="warning-banner">Some of this deck failed to load: {loadError}</div>}
       {audioPreferenceMessage && <div className="warning-banner">{audioPreferenceMessage}</div>}
 
       <section className="summary-grid summary-grid--deck">

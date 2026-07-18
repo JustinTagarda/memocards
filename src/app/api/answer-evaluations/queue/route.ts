@@ -21,20 +21,20 @@ export async function POST(request: Request) {
   const body = (await request.json()) as {
     deckId?: string
     cardId?: string
-    prompt?: string
-    expectedAnswer?: unknown
     submittedAnswer?: string
   }
 
-  if (!body.deckId || !body.cardId || !body.prompt || !body.submittedAnswer?.trim()) {
-    return NextResponse.json({ error: 'deckId, cardId, prompt, and submittedAnswer are required.' }, { status: 400 })
+  if (!body.deckId || !body.cardId || !body.submittedAnswer?.trim()) {
+    return NextResponse.json({ error: 'deckId, cardId, and submittedAnswer are required.' }, { status: 400 })
   }
 
+  // The prompt and expected answer are read from the card row rather than the
+  // request body so a client cannot queue an evaluation against fabricated data.
   const admin = createSupabaseAdminClient()
   const { data: card, error: cardError } = await admin
     .schema('memocards')
     .from('cards')
-    .select('id, ai_evaluation')
+    .select('id, prompt, front, expected_answer, ai_evaluation')
     .eq('user_id', user.id)
     .eq('deck_id', body.deckId)
     .eq('id', body.cardId)
@@ -44,13 +44,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Card not found.' }, { status: 404 })
   }
 
+  const promptText = card.prompt?.trim() || card.front?.trim() || ''
+  if (!promptText) {
+    return NextResponse.json({ error: 'This card has no prompt to evaluate against.' }, { status: 422 })
+  }
+
   const timestamp = nowIso()
   const { error: insertError } = await admin.schema('memocards').from('answer_evaluations').insert({
     user_id: user.id,
     deck_id: body.deckId,
     card_id: body.cardId,
-    prompt: body.prompt,
-    expected_answer: toJson(body.expectedAnswer ?? {}),
+    prompt: promptText,
+    expected_answer: toJson(card.expected_answer ?? {}),
     submitted_answer: body.submittedAnswer.trim(),
     status: 'pending',
     processor: 'future-ai-evaluator',

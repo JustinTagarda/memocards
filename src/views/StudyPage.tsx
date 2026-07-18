@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { StudySessionView } from '../components/StudySessionView'
 import { useAuth } from '../hooks/useAuth'
-import { useAutoPlayAudioPreference, useCards, useDeck } from '../hooks/useMemoCards'
+import { firstResourceError, useAutoPlayAudioPreference, useCards, useDeck } from '../hooks/useMemoCards'
 import {
   buildCachedAudioKey,
   queueAnswerEvaluation,
@@ -21,8 +21,9 @@ export function StudyPage() {
   const params = useParams<{ deckId: string }>()
   const deckId = typeof params.deckId === 'string' ? params.deckId : undefined
   const { user } = useAuth()
-  const { data: deck, loading: deckLoading } = useDeck(user?.id, deckId)
-  const { data: cards, loading: cardsLoading } = useCards(user?.id, deckId)
+  const { data: deck, loading: deckLoading, error: deckError } = useDeck(user?.id, deckId)
+  const { data: cards, loading: cardsLoading, error: cardsError } = useCards(user?.id, deckId)
+  const loadError = firstResourceError(deckError, cardsError)
   const {
     autoPlayAudio,
     loading: autoPlayAudioLoading,
@@ -140,46 +141,18 @@ export function StudyPage() {
     [ensureAudioReady],
   )
 
+  // Kick the server-side audio queue once per deck visit. Per-card warm-up is
+  // handled by StudySessionView for the current and next card only — eagerly
+  // requesting audio for every card in the deck ran 2×N TTS generations per
+  // page open and re-ran after every review.
+  const audioQueueDeckRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!deck?.id || cards.length === 0) {
-      return undefined
+    if (!deck?.id || audioQueueDeckRef.current === deck.id) {
+      return
     }
-
+    audioQueueDeckRef.current = deck.id
     void requestAudioQueueProcessing(deck.id)
-
-    const audioTargets = cards.flatMap((card) => [
-      { card, side: 'prompt' as const },
-      { card, side: 'answer' as const },
-    ])
-    const isSmallDeck = cards.length <= 20
-
-    if (isSmallDeck) {
-      for (const target of audioTargets) {
-        void warmAudio(target.card, target.side)
-      }
-      return undefined
-    }
-
-    const queue = [...audioTargets]
-    let cancelled = false
-    const concurrency = 4
-
-    async function worker() {
-      while (!cancelled && queue.length > 0) {
-        const next = queue.shift()
-        if (!next) {
-          break
-        }
-
-        await warmAudio(next.card, next.side)
-      }
-    }
-
-    void Promise.all(Array.from({ length: concurrency }, () => worker()))
-    return () => {
-      cancelled = true
-    }
-  }, [cards, deck?.id, warmAudio])
+  }, [deck?.id])
 
   if (!user || !deckId) {
     return null
@@ -200,6 +173,7 @@ export function StudyPage() {
         </Link>
       </div>
 
+      {loadError && <div className="warning-banner">Some study data failed to load: {loadError}</div>}
       {audioMessage && <div className="warning-banner">{audioMessage}</div>}
 
       <StudySessionView

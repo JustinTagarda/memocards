@@ -24,6 +24,7 @@ import {
 interface ResourceState<T> {
   data: T
   loading: boolean
+  error: string | null
 }
 
 const EMPTY_FOLDERS: Folder[] = []
@@ -39,6 +40,7 @@ function useResource<T>(
 ): ResourceState<T> {
   const [data, setData] = useState<T>(initialValue)
   const [loading, setLoading] = useState(Boolean(resourceKey))
+  const [error, setError] = useState<string | null>(null)
   const runLoad = useEffectEvent(load)
 
   useEffect(() => {
@@ -47,6 +49,7 @@ function useResource<T>(
     if (!resourceKey) {
       setData(initialValue)
       setLoading(false)
+      setError(null)
       return
     }
 
@@ -58,6 +61,11 @@ function useResource<T>(
           return
         }
         setData(nextValue)
+        setError(null)
+      } catch (reason) {
+        if (active) {
+          setError(reason instanceof Error ? reason.message : 'Unable to load your data right now.')
+        }
       } finally {
         if (active) {
           setLoading(false)
@@ -76,11 +84,16 @@ function useResource<T>(
     }
   }, [initialValue, resourceKey])
 
-  return { data, loading }
+  return { data, loading, error }
 }
 
 export function useUserProfile(uid: string | undefined): ResourceState<UserProfile | null> {
   return useResource(uid ?? null, null, () => fetchUserProfile(uid!))
+}
+
+/** True when any of the passed resource errors is set; returns the first message. */
+export function firstResourceError(...errors: Array<string | null>) {
+  return errors.find((value) => Boolean(value)) ?? null
 }
 
 export function useAutoPlayAudioPreference(uid: string | undefined) {

@@ -108,6 +108,8 @@ export function StudySessionView({
   const [results, setResults] = useState<SessionCardResult[]>([])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [reviewError, setReviewError] = useState<string | null>(null)
   const [evaluationStatus, setEvaluationStatus] = useState<string | null>(null)
   const [mobileOptionsOpen, setMobileOptionsOpen] = useState(false)
 
@@ -158,6 +160,7 @@ export function StudySessionView({
     setResults([])
     setSaving(false)
     setSaved(false)
+    setSaveError(null)
     setEvaluationStatus(null)
     setMobileOptionsOpen(false)
   }, [deck.id, deck.preferences.defaultMode, deck.preferences.shuffleByDefault])
@@ -171,6 +174,7 @@ export function StudySessionView({
     setTypedAnswer('')
     setSelectedChoiceId(null)
     setSaved(false)
+    setSaveError(null)
     setEvaluationStatus(null)
     setMobileOptionsOpen(false)
   }, [mode, shuffle, favoritesOnly])
@@ -181,9 +185,12 @@ export function StudySessionView({
     }
 
     setSaving(true)
+    setSaveError(null)
     try {
       await onComplete(mode, startedAt, completedResults)
       setSaved(true)
+    } catch (reason) {
+      setSaveError(reason instanceof Error ? reason.message : 'Unable to save this session.')
     } finally {
       setSaving(false)
     }
@@ -199,7 +206,13 @@ export function StudySessionView({
         ? currentCard.choices.find((choice) => choice.id === selectedChoiceId)?.text ?? ''
         : typedAnswer
 
-    await onReview(currentCard, assessment, mode, responseText)
+    setReviewError(null)
+    try {
+      await onReview(currentCard, assessment, mode, responseText)
+    } catch (reason) {
+      setReviewError(reason instanceof Error ? reason.message : 'Unable to save that review. Try again.')
+      return
+    }
 
     const nextResults = [
       ...results,
@@ -225,10 +238,12 @@ export function StudySessionView({
   }
 
   useEffect(() => {
-    if (sessionFinished && results.length > 0 && !saved && !saving) {
+    // saveError intentionally blocks auto-retry: a persistent failure would
+    // otherwise loop forever. The summary screen offers a manual retry.
+    if (sessionFinished && results.length > 0 && !saved && !saving && !saveError) {
       void handleFinish()
     }
-  }, [results.length, saved, saving, sessionFinished])
+  }, [results.length, saved, saveError, saving, sessionFinished])
 
   useEffect(() => {
     if (!autoPlayAudio || revealed || !currentCard) {
@@ -244,6 +259,7 @@ export function StudySessionView({
     }
 
     void warmAudioForCard(currentCard, 'prompt')
+    void warmAudioForCard(currentCard, 'answer')
 
     if (nextCard) {
       void warmAudioForCard(nextCard, 'prompt')
@@ -272,7 +288,19 @@ export function StudySessionView({
             <span>mode</span>
           </article>
         </div>
-        <small className="hint-text">{saved ? 'Saved.' : saving ? 'Saving...' : 'Wrapping up.'}</small>
+        <small className="hint-text">{saved ? 'Saved.' : saving ? 'Saving...' : saveError ?? 'Wrapping up.'}</small>
+        {saveError && !saved && (
+          <button
+            className="primary-button"
+            disabled={saving}
+            type="button"
+            onClick={() => {
+              void handleFinish()
+            }}
+          >
+            Retry saving session
+          </button>
+        )}
         <button
           className="ghost-button"
           type="button"
@@ -283,6 +311,7 @@ export function StudySessionView({
             setResults([])
             setRevealed(false)
             setSaved(false)
+            setSaveError(null)
           }}
         >
           <RotateCcw size={16} />
@@ -504,6 +533,7 @@ export function StudySessionView({
         </div>
 
         <div className={revealed ? 'study-card__actions study-card__actions--revealed' : 'study-card__actions'}>
+          {reviewError && <p className="error-text">{reviewError}</p>}
           {revealed ? (
             <div className="assessment-row">
               {assessments.map((assessment) => (

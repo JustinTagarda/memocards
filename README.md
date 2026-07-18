@@ -116,6 +116,7 @@ Migrations:
 
 - `supabase/migrations/20260310230000_init_memocards.sql`
 - `supabase/migrations/20260320150000_add_audio_generation_queue.sql`
+- `supabase/migrations/20260718090000_queue_recovery_and_activity_pruning.sql`
 
 Primary tables and schemas:
 

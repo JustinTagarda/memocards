@@ -53,7 +53,7 @@ Storage: private `memocards-audio` bucket, paths scoped by user id, accessed via
 
 ### Study and spaced repetition
 
-`StudyPage` → `StudySessionView` runs a session; each answer calls `reviewCard(...)`, which applies `src/lib/spacedRepetition.ts` (SM-2 variant: `again/hard/good/easy` → quality, ease factor, interval, mastery). `recordStudySession(...)` persists the session, bumps streaks/summary on the profile, and logs activity.
+`StudyPage` → `StudySessionView` runs a session; each answer calls `reviewCard(...)`, which applies `src/lib/spacedRepetition.ts` (SM-2 variant: `again/hard/good/easy` → quality, ease factor, interval, mastery). Reviews update deck counts *incrementally* and deliberately do not fire `notifyDataChanged()` — broadcasting mid-session would refetch every subscribed view after each answer. `recordStudySession(...)` persists the session at the end, bumps streaks (local-day keys via `startOfLocalDayKey`), and broadcasts the refresh.
 
 ### Card entry (fast-entry workflow)
 
@@ -66,7 +66,7 @@ Storage: private `memocards-audio` bucket, paths scoped by user id, accessed via
 Two paths, both in `src/app/api/audio`:
 
 - `POST /api/audio/generate` — synchronous: authenticates, ensures TTS audio for one card side via `src/lib/cardAudioGeneration.ts` (text hash dedupe, Cloud TTS, upload to storage), returns a signed URL.
-- `POST /api/audio/process-queue` — drains `memocards.audio_generation_queue` in the background (queued by card saves) so decks get audio without blocking the UI. Client-side warmup/preload caching lives in the study flow (`buildCachedAudioKey`).
+- `POST /api/audio/process-queue` — drains `memocards.audio_generation_queue` in the background (rows are enqueued by a DB trigger on card insert/text change). `claim_audio_generation_jobs` also reclaims jobs stuck in `processing` for >5 min and retries `failed` jobs up to 3 attempts (hard cap 5). Client-side warmup is limited to the current/next card in the study flow (`buildCachedAudioKey`); regeneration deletes the superseded storage object, and card/deck deletes remove their audio files best-effort.
 
 Audio variants track `status` (`idle/processing/ready/failed`) and `textHash`; regeneration is skipped when the hash matches.
 

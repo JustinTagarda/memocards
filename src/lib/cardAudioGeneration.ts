@@ -164,6 +164,16 @@ export async function ensureCardAudioGenerated(
     throw new Error(updateError.message)
   }
 
+  // The storage path is content-addressed, so regenerated text leaves the old
+  // file orphaned unless it is removed here. Best-effort: a failed removal
+  // should not fail the generation.
+  if (existingVariant?.storagePath && existingVariant.storagePath !== variant.storagePath) {
+    await admin.storage
+      .from(audioBucket)
+      .remove([existingVariant.storagePath])
+      .catch(() => undefined)
+  }
+
   if (options.logActivity) {
     await admin.schema('memocards').from('activity').insert({
       user_id: card.user_id,

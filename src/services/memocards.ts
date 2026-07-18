@@ -15,7 +15,6 @@ import type {
   Deck,
   DeckCounts,
   DeckDraft,
-  EvaluationRequest,
   Folder,
   SelfAssessment,
   SessionCardResult,
@@ -170,6 +169,48 @@ function normalizeDeck(row: DeckRow): Deck {
   }
 }
 
+function normalizeReviewState(value: Json | null, createdAt: string): Card['reviewState'] {
+  const fallback = createInitialReviewState(createdAt)
+  const raw = jsonAs<Partial<Card['reviewState']>>(value, fallback)
+  return {
+    repetitions: typeof raw.repetitions === 'number' ? raw.repetitions : fallback.repetitions,
+    easeFactor: typeof raw.easeFactor === 'number' ? raw.easeFactor : fallback.easeFactor,
+    intervalDays: typeof raw.intervalDays === 'number' ? raw.intervalDays : fallback.intervalDays,
+    lapses: typeof raw.lapses === 'number' ? raw.lapses : fallback.lapses,
+    lastReviewedAt: typeof raw.lastReviewedAt === 'string' ? raw.lastReviewedAt : null,
+    dueAt: typeof raw.dueAt === 'string' ? raw.dueAt : fallback.dueAt,
+    mastery: typeof raw.mastery === 'number' ? raw.mastery : fallback.mastery,
+  }
+}
+
+function normalizeStudyStats(value: Json | null): Card['studyStats'] {
+  const raw = jsonAs<Partial<Card['studyStats']>>(value, {})
+  return {
+    totalReviews: typeof raw.totalReviews === 'number' ? raw.totalReviews : 0,
+    correctReviews: typeof raw.correctReviews === 'number' ? raw.correctReviews : 0,
+    incorrectReviews: typeof raw.incorrectReviews === 'number' ? raw.incorrectReviews : 0,
+    lastMode: raw.lastMode ?? null,
+    lastScore: typeof raw.lastScore === 'number' ? raw.lastScore : null,
+    lastStudiedAt: typeof raw.lastStudiedAt === 'string' ? raw.lastStudiedAt : null,
+  }
+}
+
+function normalizeCardAudio(value: Json | null): Card['audio'] {
+  const raw = jsonAs<Partial<Card['audio']>>(value, {})
+  const normalizeVariant = (variant?: Partial<AudioVariant>): AudioVariant => ({
+    status: variant?.status ?? 'idle',
+    storagePath: variant?.storagePath ?? null,
+    textHash: variant?.textHash ?? null,
+    updatedAt: variant?.updatedAt ?? null,
+  })
+  return {
+    locale: typeof raw.locale === 'string' ? raw.locale : DEFAULT_SETTINGS.defaultLocale,
+    voiceName: typeof raw.voiceName === 'string' ? raw.voiceName : DEFAULT_SETTINGS.defaultVoice,
+    prompt: normalizeVariant(raw.prompt),
+    answer: normalizeVariant(raw.answer),
+  }
+}
+
 function normalizeCard(row: CardRow): Card {
   return {
     id: row.id,
@@ -191,21 +232,9 @@ function normalizeCard(row: CardRow): Card {
     isFavorite: row.is_favorite,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    reviewState: jsonAs<Card['reviewState']>(row.review_state, createInitialReviewState(row.created_at)),
-    studyStats: jsonAs<Card['studyStats']>(row.study_stats, {
-      totalReviews: 0,
-      correctReviews: 0,
-      incorrectReviews: 0,
-      lastMode: null,
-      lastScore: null,
-      lastStudiedAt: null,
-    }),
-    audio: jsonAs<Card['audio']>(row.audio, {
-      locale: DEFAULT_SETTINGS.defaultLocale,
-      voiceName: DEFAULT_SETTINGS.defaultVoice,
-      prompt: defaultAudioVariant(),
-      answer: defaultAudioVariant(),
-    }),
+    reviewState: normalizeReviewState(row.review_state, row.created_at),
+    studyStats: normalizeStudyStats(row.study_stats),
+    audio: normalizeCardAudio(row.audio),
     aiEvaluation: {
       ...DEFAULT_AI_EVALUATION,
       ...jsonAs<CardAiEvaluation>(row.ai_evaluation, DEFAULT_AI_EVALUATION),
@@ -394,6 +423,36 @@ function computeDeckCounts(cards: Card[]): DeckCounts {
   )
 }
 
+const AUDIO_BUCKET = 'memocards-audio'
+
+function collectCardAudioPaths(rows: Array<Pick<CardRow, 'audio'>>) {
+  const paths: string[] = []
+  for (const row of rows) {
+    const audio = normalizeCardAudio(row.audio)
+    for (const variant of [audio.prompt, audio.answer]) {
+      if (variant.storagePath) {
+        paths.push(variant.storagePath)
+      }
+    }
+  }
+  return paths
+}
+
+/** Best-effort removal of generated audio files; never blocks the delete that triggered it. */
+async function removeAudioObjects(paths: string[]) {
+  if (paths.length === 0) {
+    return
+  }
+  try {
+    const storage = supabase().storage.from(AUDIO_BUCKET)
+    for (let index = 0; index < paths.length; index += 100) {
+      await storage.remove(paths.slice(index, index + 100))
+    }
+  } catch {
+    return
+  }
+}
+
 async function assertNoError<T>(promise: PromiseLike<{ data: T; error: { message: string } | null }>) {
   const result = await promise
   if (result.error) {
@@ -476,6 +535,8 @@ export async function ensureUserProfile(user: User) {
     ),
   )
 
+  // Seed defaults only for brand-new users; an existing row must never be
+  // overwritten here because this runs on every auth event (reload, token refresh).
   await assertNoError(
     memocardsSchema().from('user_settings').upsert(
       {
@@ -486,7 +547,7 @@ export async function ensureUserProfile(user: User) {
         auto_play_audio: DEFAULT_SETTINGS.autoPlayAudio,
         updated_at: timestamp,
       },
-      { onConflict: 'user_id', ignoreDuplicates: false },
+      { onConflict: 'user_id', ignoreDuplicates: true },
     ),
   )
 }
@@ -675,8 +736,13 @@ export async function deleteDeck(uid: string, deckId: string) {
       .maybeSingle(),
   )
 
+  const audioRows = await assertNoError(
+    memocardsSchema().from('cards').select('audio').eq('user_id', uid).eq('deck_id', deckId),
+  )
+
   await assertNoError(memocardsSchema().from('cards').delete().eq('user_id', uid).eq('deck_id', deckId))
   await assertNoError(memocardsSchema().from('decks').delete().eq('user_id', uid).eq('id', deckId))
+  await removeAudioObjects(collectCardAudioPaths(audioRows ?? []))
   await createActivity(uid, {
     type: 'deck_deleted',
     title: 'Deck deleted',
@@ -780,6 +846,13 @@ export async function saveCard(
     await assertNoError(
       memocardsSchema().from('cards').insert(createCardRecord(uid, deckId, draft, userSettings, timestamp)),
     )
+    await createActivity(uid, {
+      type: 'card_imported',
+      title: 'Card created',
+      description: 'Saved 1 card',
+      deckId,
+      cardId: null,
+    })
   }
 
   await syncDeckCounts(uid, deckId)
@@ -851,9 +924,20 @@ export async function deleteCard(uid: string, deckId: string, cardId: string) {
     return
   }
 
+  const audioRow = await assertNoError(
+    memocardsSchema()
+      .from('cards')
+      .select('audio')
+      .eq('user_id', uid)
+      .eq('deck_id', deckId)
+      .eq('id', cardId)
+      .maybeSingle(),
+  )
+
   await assertNoError(
     memocardsSchema().from('cards').delete().eq('user_id', uid).eq('deck_id', deckId).eq('id', cardId),
   )
+  await removeAudioObjects(collectCardAudioPaths(audioRow ? [audioRow] : []))
   await syncDeckCounts(uid, deckId)
 }
 
@@ -910,8 +994,8 @@ export async function reviewCard(
           correctReviews,
           incorrectReviews,
           lastMode: mode,
-          lastScore: score,
           lastStudiedAt: timestamp,
+          lastScore: score,
         }),
         updated_at: timestamp,
       })
@@ -920,15 +1004,51 @@ export async function reviewCard(
       .eq('id', card.id),
   )
 
-  await createActivity(uid, {
-    type: 'card_reviewed',
-    title: 'Card reviewed',
-    description: responseText ? 'Reviewed with typed answer' : 'Reviewed flashcard',
-    deckId,
-    cardId: card.id,
-  })
+  // Deck counts are adjusted incrementally instead of re-reading every card,
+  // and no data-changed event fires here: broadcasting mid-session would make
+  // every subscribed view refetch after each answer. recordStudySession
+  // refreshes everything when the session ends.
+  await adjustDeckCountsForReview(uid, deckId, card, reviewState, timestamp)
+}
 
-  await syncDeckCounts(uid, deckId)
+async function adjustDeckCountsForReview(
+  uid: string,
+  deckId: string,
+  previousCard: Card,
+  nextReviewState: Card['reviewState'],
+  timestamp: string,
+) {
+  const deckRow = await assertNoError(
+    memocardsSchema().from('decks').select('counts').eq('user_id', uid).eq('id', deckId).maybeSingle(),
+  )
+  if (!deckRow) {
+    return
+  }
+
+  const counts = normalizeCounts(jsonAs<Partial<DeckCounts>>(deckRow.counts, {}))
+  const wasDue = isDue(previousCard.reviewState.dueAt, timestamp)
+  const nowDue = isDue(nextReviewState.dueAt, timestamp)
+  const wasMastered = previousCard.reviewState.mastery >= 80
+  const nowMastered = nextReviewState.mastery >= 80
+  const wasNew = previousCard.studyStats.totalReviews === 0
+
+  const nextCounts: DeckCounts = {
+    ...counts,
+    dueCards: Math.max(0, counts.dueCards + (nowDue ? 1 : 0) - (wasDue ? 1 : 0)),
+    masteredCards: Math.max(0, counts.masteredCards + (nowMastered ? 1 : 0) - (wasMastered ? 1 : 0)),
+    newCards: Math.max(0, counts.newCards - (wasNew ? 1 : 0)),
+  }
+
+  await assertNoError(
+    memocardsSchema()
+      .from('decks')
+      .update({
+        counts: toJson(nextCounts),
+        updated_at: timestamp,
+      })
+      .eq('id', deckId)
+      .eq('user_id', uid),
+  )
 }
 
 export async function recordStudySession(
@@ -1388,10 +1508,8 @@ export async function queueAnswerEvaluation(
     body: JSON.stringify({
       deckId,
       cardId: card.id,
-      prompt: card.prompt,
-      expectedAnswer: card.expectedAnswer,
       submittedAnswer,
-    } satisfies Omit<EvaluationRequest, 'id' | 'status' | 'createdAt'>),
+    }),
   })
 
   if (!response.ok) {

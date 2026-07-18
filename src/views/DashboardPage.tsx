@@ -8,7 +8,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Modal } from '../components/Modal'
 import { FolderForm, ImportDialog } from '../components/forms'
 import { useAuth } from '../hooks/useAuth'
-import { useDecks, useFolders, useUserProfile } from '../hooks/useMemoCards'
+import { firstResourceError, useDecks, useFolders, useUserProfile } from '../hooks/useMemoCards'
 import { formatCalendarDate, formatSmartDate } from '../lib/utils'
 import { createFolder, deleteDeck, importDeckBundle } from '../services/memocards'
 import type { Deck } from '../types/models'
@@ -16,9 +16,10 @@ import type { Deck } from '../types/models'
 export function DashboardPage() {
   const { user } = useAuth()
   const router = useRouter()
-  const { data: profile, loading: profileLoading } = useUserProfile(user?.id)
-  const { data: folders } = useFolders(user?.id)
-  const { data: decks, loading: decksLoading } = useDecks(user?.id)
+  const { data: profile, loading: profileLoading, error: profileError } = useUserProfile(user?.id)
+  const { data: folders, error: foldersError } = useFolders(user?.id)
+  const { data: decks, loading: decksLoading, error: decksError } = useDecks(user?.id)
+  const loadError = firstResourceError(profileError, foldersError, decksError)
 
   const [search, setSearch] = useState('')
   const [folderFilter, setFolderFilter] = useState('all')
@@ -56,6 +57,7 @@ export function DashboardPage() {
 
   return (
     <div className="page-stack page-stack--dashboard">
+      {loadError && <div className="warning-banner">Some of your data failed to load: {loadError}</div>}
       <section className="dashboard-hero">
         <article className="hero-panel hero-panel--feature hero-panel--dashboard">
           <div className="hero-panel__copy">

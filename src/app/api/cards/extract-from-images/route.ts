@@ -8,6 +8,7 @@ export const runtime = 'nodejs'
 export const maxDuration = 180
 
 const GOOGLE_VISION_TIMEOUT_MS = 120000
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 type OcrPage = {
   id: string
@@ -243,6 +244,17 @@ export async function POST(request: Request) {
           requestId,
           stage: 'input',
           error: `Unsupported file type for ${image.name}.`,
+        },
+        { status: 400 },
+      )
+    }
+
+    if (image.size > MAX_IMAGE_BYTES) {
+      return NextResponse.json(
+        {
+          requestId,
+          stage: 'input',
+          error: `${image.name || `Image ${index + 1}`} is larger than 10 MB. Crop or compress it and try again.`,
         },
         { status: 400 },
       )
