@@ -1,5 +1,6 @@
 'use client'
 
+import { Camera, Repeat, Volume2, Zap } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -127,6 +128,36 @@ export function LandingPage() {
           </div>
         </div>
 
+        <div className="landing-features">
+          <article className="landing-feature">
+            <span className="landing-feature__icon">
+              <Repeat size={18} />
+            </span>
+            <strong>Spaced repetition</strong>
+            <p>Cards come back right before you forget them, so every review counts.</p>
+          </article>
+          <article className="landing-feature">
+            <span className="landing-feature__icon">
+              <Zap size={18} />
+            </span>
+            <strong>Fast card entry</strong>
+            <p>Quick Add syntax and paste-many turn notes into decks in seconds.</p>
+          </article>
+          <article className="landing-feature">
+            <span className="landing-feature__icon">
+              <Camera size={18} />
+            </span>
+            <strong>Photos to cards</strong>
+            <p>Snap a lesson page and let OCR and AI draft the questions for you.</p>
+          </article>
+          <article className="landing-feature">
+            <span className="landing-feature__icon">
+              <Volume2 size={18} />
+            </span>
+            <strong>Listen while you study</strong>
+            <p>Generated audio reads prompts and answers aloud during reviews.</p>
+          </article>
+        </div>
       </section>
     </div>
   )

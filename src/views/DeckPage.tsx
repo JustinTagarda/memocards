@@ -122,10 +122,19 @@ export function DeckPage() {
               <BookOpen size={16} />
               Study deck
             </Link>
+            <Link className="primary-button" href={`/app/decks/${deck.id}/cards/new`}>
+              <Plus size={16} />
+              Add card
+            </Link>
             <Link className="ghost-button" href={`/app/decks/${deck.id}/edit`}>
               <PencilLine size={16} />
               Edit deck
             </Link>
+            <Link className="ghost-button" href={`/app/decks/${deck.id}/questions/generate` as Route}>
+              <Sparkles size={16} />
+              Generate questions
+            </Link>
+            <ExportMenu deck={deck} cards={cards} />
             <button
               className="ghost-button deck-detail-hero__delete"
               type="button"
@@ -136,15 +145,6 @@ export function DeckPage() {
               <Trash2 size={16} />
               Delete deck
             </button>
-            <Link className="primary-button" href={`/app/decks/${deck.id}/cards/new`}>
-              <Plus size={16} />
-              Add card
-            </Link>
-            <Link className="ghost-button" href={`/app/decks/${deck.id}/questions/generate` as Route}>
-              <Sparkles size={16} />
-              Generate questions
-            </Link>
-            <ExportMenu deck={deck} cards={cards} />
           </div>
         </div>
       </section>

@@ -470,6 +470,47 @@ textarea:focus {
   justify-content: center;
 }
 
+.landing-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--space-3);
+  width: min(100%, 60rem);
+  margin-top: var(--space-5);
+}
+
+.landing-feature {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--surface-border);
+  border-radius: 1.1rem;
+  background: var(--surface-2);
+  text-align: left;
+}
+
+.landing-feature__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 0.85rem;
+  color: var(--accent);
+  background: rgba(234, 88, 12, 0.1);
+}
+
+.landing-feature strong {
+  font-size: 0.95rem;
+}
+
+.landing-feature p {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
 .landing-notes {
   display: flex;
   flex-wrap: wrap;
@@ -2357,6 +2398,14 @@ input[type='file'] {
 
 .deck-grid__footer-button {
   width: 100%;
+}
+
+/* On desktop the hero's "New deck" button is always in view, so the
+   full-width duplicate at the end of the deck list is mobile-only. */
+@media (min-width: 48rem) {
+  .deck-grid__footer {
+    display: none;
+  }
 }
 
 .deck-card {
