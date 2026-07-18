@@ -3,7 +3,7 @@
 import { History } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useRecentActivity, useRecentSessions } from '../hooks/useMemoCards'
-import { formatSmartDate } from '../lib/utils'
+import { formatSmartDate, pluralize } from '../lib/utils'
 
 export function ActivityPage() {
   const { user } = useAuth()
@@ -35,7 +35,7 @@ export function ActivityPage() {
               <div key={session.id} className="activity-item">
                 <strong>{session.deckTitle}</strong>
                 <small>
-                  {session.cardsStudied} cards · {session.mode} · {formatSmartDate(session.endedAt)}
+                  {pluralize(session.cardsStudied, 'card')} · {session.mode} · {formatSmartDate(session.endedAt)}
                 </small>
               </div>
             ))}

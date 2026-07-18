@@ -9,7 +9,7 @@ import { Modal } from '../components/Modal'
 import { FolderForm, ImportDialog } from '../components/forms'
 import { useAuth } from '../hooks/useAuth'
 import { firstResourceError, useDecks, useFolders, useUserProfile } from '../hooks/useMemoCards'
-import { formatCalendarDate, formatSmartDate } from '../lib/utils'
+import { formatCalendarDate, formatSmartDate, pluralize } from '../lib/utils'
 import { createFolder, deleteDeck, importDeckBundle } from '../services/memocards'
 import type { Deck } from '../types/models'
 
@@ -84,7 +84,7 @@ export function DashboardPage() {
             <div className="summary-grid summary-grid--dashboard">
               <article className="summary-card">
                 <strong>{profile?.summary.totalDecks ?? 0}</strong>
-                <span>decks</span>
+                <span>{(profile?.summary.totalDecks ?? 0) === 1 ? 'deck' : 'decks'}</span>
               </article>
               <article className="summary-card">
                 <strong>{dueToday}</strong>
@@ -223,7 +223,7 @@ export function DashboardPage() {
                     <span className="progress-fill" style={{ width: `${mastery}%` }} />
                   </div>
                   <div className="metrics-row">
-                    <span>{deck.counts.totalCards} cards</span>
+                    <span>{pluralize(deck.counts.totalCards, 'card')}</span>
                     <span>{mastery}% learned</span>
                     <span>{deck.counts.favorites} favorites</span>
                   </div>
