@@ -2714,6 +2714,52 @@ input[type='file'] {
   font-size: 0.8rem;
 }
 
+.empty-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.empty-panel--onboarding p {
+  max-width: 34rem;
+}
+
+/* Keyboard affordances only make sense where a keyboard is likely. */
+.study-shortcut-hint,
+.assessment-button__key {
+  display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .study-shortcut-hint {
+    display: block;
+    margin-top: var(--space-2);
+    color: var(--ink-muted);
+    font-size: 0.75rem;
+    text-align: center;
+  }
+
+  .assessment-button__key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.15rem;
+    height: 1.15rem;
+    margin-bottom: 0.15rem;
+    padding: 0 0.25rem;
+    border: 1px solid var(--surface-border);
+    border-radius: 0.35rem;
+    color: var(--ink-muted);
+    background: var(--surface-2);
+    font-family: inherit;
+    font-size: 0.66rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+}
+
 .card-row__stats small:not(:last-child)::after {
   content: '·';
   margin-left: 0.45rem;

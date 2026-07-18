@@ -207,10 +207,39 @@ export function DeckPage() {
 
       <section className="deck-workspace deck-workspace--single">
         <div className="card-list card-list--deck">
-          {filteredCards.length === 0 && (
+          {cards.length === 0 && (
+            <article className="empty-panel empty-panel--onboarding">
+              <strong>Add your first card</strong>
+              <p>This deck is empty. Write a card yourself, or generate a batch from lesson text or photos.</p>
+              <div className="empty-panel__actions">
+                <Link className="primary-button" href={`/app/decks/${deck.id}/cards/new`}>
+                  <Plus size={16} />
+                  Add a card
+                </Link>
+                <Link className="ghost-button" href={`/app/decks/${deck.id}/questions/generate` as Route}>
+                  <Sparkles size={16} />
+                  Generate from a lesson
+                </Link>
+              </div>
+            </article>
+          )}
+          {cards.length > 0 && filteredCards.length === 0 && (
             <article className="empty-panel">
               <strong>No cards match this filter</strong>
-              <p>Try another search, clear a filter, or add a new card.</p>
+              <p>Try another search or clear a filter.</p>
+              <div className="empty-panel__actions">
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={() => {
+                    setSearch('')
+                    setTagFilter('all')
+                    setFavoritesOnly(false)
+                  }}
+                >
+                  Clear filters
+                </button>
+              </div>
             </article>
           )}
 

@@ -191,10 +191,42 @@ export function DashboardPage() {
         </div>
 
         {isLoading && <article className="empty-panel">Loading your decks...</article>}
-        {!isLoading && filteredDecks.length === 0 && (
+        {!isLoading && decks.length === 0 && (
+          <article className="empty-panel empty-panel--onboarding">
+            <strong>Create your first deck</strong>
+            <p>
+              A deck is a set of flashcards on one topic. Start one from scratch, or import a deck
+              file if you have one.
+            </p>
+            <div className="empty-panel__actions">
+              <Link className="primary-button" href="/app/decks/new">
+                <BookOpen size={16} />
+                Create a deck
+              </Link>
+              <button className="ghost-button" type="button" onClick={() => setShowImportModal(true)}>
+                <Import size={16} />
+                Import a deck
+              </button>
+            </div>
+          </article>
+        )}
+        {!isLoading && decks.length > 0 && filteredDecks.length === 0 && (
           <article className="empty-panel">
-            <strong>No decks yet</strong>
-            <p>Create a deck or import one to start studying here.</p>
+            <strong>No decks match these filters</strong>
+            <p>Try a different search, folder, or tag.</p>
+            <div className="empty-panel__actions">
+              <button
+                className="ghost-button"
+                type="button"
+                onClick={() => {
+                  setSearch('')
+                  setFolderFilter('all')
+                  setTagFilter('all')
+                }}
+              >
+                Clear filters
+              </button>
+            </div>
           </article>
         )}
 

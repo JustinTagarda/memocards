@@ -266,6 +266,45 @@ export function StudySessionView({
     }
   }, [currentCard?.id, nextCard?.id])
 
+  const canReveal =
+    Boolean(currentCard) && !revealed && !(currentCard?.type === 'multiple_choice' && !selectedChoiceId)
+
+  const handleShortcut = useEffectEvent((event: globalThis.KeyboardEvent) => {
+    if (event.ctrlKey || event.metaKey || event.altKey || sessionFinished || !currentCard) {
+      return
+    }
+
+    const target = event.target as HTMLElement | null
+    if (
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable)
+    ) {
+      return
+    }
+
+    if ((event.key === ' ' || event.key === 'Enter') && canReveal) {
+      event.preventDefault()
+      setRevealed(true)
+      return
+    }
+
+    if (revealed && event.key >= '1' && event.key <= '4') {
+      const assessment = assessments[Number(event.key) - 1]
+      if (assessment) {
+        event.preventDefault()
+        void handleAssessment(assessment.value)
+      }
+    }
+  })
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleShortcut)
+    return () => window.removeEventListener('keydown', handleShortcut)
+  }, [])
+
   if (sessionFinished) {
     const accuracy =
       results.length === 0
@@ -536,7 +575,7 @@ export function StudySessionView({
           {reviewError && <p className="error-text">{reviewError}</p>}
           {revealed ? (
             <div className="assessment-row">
-              {assessments.map((assessment) => (
+              {assessments.map((assessment, index) => (
                 <button
                   key={assessment.value}
                   aria-describedby={`assessment-tip-${assessment.value}`}
@@ -547,6 +586,7 @@ export function StudySessionView({
                     void handleAssessment(assessment.value)
                   }}
                 >
+                  <kbd aria-hidden="true" className="assessment-button__key">{index + 1}</kbd>
                   <strong>{assessment.label}</strong>
                   <small>{assessment.hint}</small>
                   <span id={`assessment-tip-${assessment.value}`} className="assessment-button__tooltip" role="tooltip">
@@ -565,6 +605,9 @@ export function StudySessionView({
               Reveal answer
             </button>
           )}
+          <small className="study-shortcut-hint" aria-hidden="true">
+            {revealed ? 'Press 1–4 to rate this card' : 'Press Space to reveal the answer'}
+          </small>
         </div>
       </div>
     </section>
