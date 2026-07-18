@@ -9,6 +9,7 @@ This project was scaffolded with Codex and keeps its rules in `AGENTS.md`. Those
 - Read and follow [AGENTS.md](AGENTS.md) in this repository. It covers build/verification commands, architecture and persistence boundaries, helper ownership, routing/type-safety rules, environment/secrets policy, and repository access restrictions.
 - `AGENTS.md` inherits from the global `D:\Projects\AGENTS.md`. Never modify the global file.
 - This file adds Claude-specific guidance only. If this file and `AGENTS.md` ever conflict, `AGENTS.md` wins; flag the conflict instead of silently picking one.
+- For a detailed map of data flow, the audio pipeline, auth/dev-bypass, spaced repetition, and known extension points, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before making non-trivial changes.
 
 ## Quick Orientation
 
