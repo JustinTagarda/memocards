@@ -61,8 +61,20 @@ export function DashboardPage() {
       <section className="dashboard-hero">
         <article className="hero-panel hero-panel--feature hero-panel--dashboard">
           <div className="hero-panel__copy">
-            <h1>{dueToday > 0 ? `Ready to review, ${firstName}?` : `Keep going, ${firstName}.`}</h1>
-            <p>{dueToday > 0 ? `${dueToday} card${dueToday === 1 ? '' : 's'} due today.` : 'Nothing due today.'}</p>
+            <h1>
+              {decks.length === 0
+                ? `Welcome, ${firstName}.`
+                : dueToday > 0
+                  ? `Ready to review, ${firstName}?`
+                  : `Keep going, ${firstName}.`}
+            </h1>
+            <p>
+              {decks.length === 0
+                ? 'Create your first deck to start studying.'
+                : dueToday > 0
+                  ? `${dueToday} card${dueToday === 1 ? '' : 's'} due today.`
+                  : "Nothing due today — you're all caught up."}
+            </p>
           </div>
 
           <div className="hero-panel__tools">
