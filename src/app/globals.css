@@ -133,6 +133,10 @@ small,
   color: var(--ink-muted);
 }
 
+.hint-text--error {
+  color: var(--danger);
+}
+
 input[type='checkbox'],
 input[type='radio'] {
   accent-color: var(--accent);

@@ -20,7 +20,7 @@ MemoCards is a private, per-user Next.js flashcard app for spaced repetition, de
 - Public landing page at `/` with sign-in entry points and local dev bypass messaging.
 - Dashboard at `/app` showing due cards, streak, session totals, deck search, folder filtering, and tag filtering.
 - Create deck, import deck, and create folder actions from the dashboard.
-- Accounts with no decks are auto-seeded with 3 sample decks (covering basic recall, short-answer grading, and multiple-choice with audio) so new and empty accounts can try the app immediately; seeded decks carry a "Sample" badge and a one-time welcome modal explains they can be deleted freely.
+- When an account has no decks (a fresh signup, or after deleting the last deck), the dashboard offers to load 3 sample decks (covering basic recall, short-answer grading, and multiple-choice with audio) via a confirmation modal — nothing is created without the user opting in. Declining is remembered for that login until the next sign-in or the next time the account drops back to zero decks. Loaded sample decks carry a "Sample" badge and can be deleted like any other deck.
 
 ### Deck Management
 
@@ -126,6 +126,7 @@ Migrations:
 - `supabase/migrations/20260320150000_add_audio_generation_queue.sql`
 - `supabase/migrations/20260718090000_queue_recovery_and_activity_pruning.sql`
 - `supabase/migrations/20260726024557_add_sample_deck_flags.sql`
+- `supabase/migrations/20260726042145_drop_sample_data_seeded_at.sql`
 
 Primary tables and schemas:
 

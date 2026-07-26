@@ -1359,37 +1359,16 @@ export async function importDeckBundle(
   return deckId
 }
 
-async function markSampleDataSeeded(uid: string) {
-  await assertNoError(
-    memocardsSchema()
-      .from('user_settings')
-      .update({ sample_data_seeded_at: nowIso() })
-      .eq('user_id', uid),
-  )
-}
-
-async function performSeedSampleData(uid: string): Promise<boolean> {
-  const settingsRow = await fetchSettingsRow(uid)
-  if (settingsRow?.sample_data_seeded_at) {
-    return false
-  }
-
+async function performLoadSampleData(uid: string): Promise<void> {
   const existingDecks = await fetchDecks(uid)
-  const realDecks = existingDecks.filter((deck) => !deck.isSample)
-  if (realDecks.length > 0) {
-    await markSampleDataSeeded(uid)
-    return false
+  if (existingDecks.length > 0) {
+    // Another tab/click already added decks for this account — nothing to do.
+    return
   }
 
-  // Clean up empty sample decks left behind by a previous interrupted/failed attempt
-  // (e.g. a race between concurrent auth events) before retrying.
-  for (const deck of existingDecks) {
-    if (deck.counts.totalCards === 0) {
-      await deleteDeck(uid, deck.id)
-    }
-  }
-
-  const settings = normalizeSettings(settingsRow)
+  const settings = isLocalDevBypassUserId(uid)
+    ? DEFAULT_SETTINGS
+    : normalizeSettings(await fetchSettingsRow(uid))
   const createdDeckIds: string[] = []
   try {
     for (const sampleDeck of SAMPLE_DECKS) {
@@ -1400,8 +1379,8 @@ async function performSeedSampleData(uid: string): Promise<boolean> {
     throw error
   }
 
-  // Never stamp sample_data_seeded_at on trust alone: re-fetch and confirm every
-  // deck we just created actually has cards before treating this as a success.
+  // Never trust the creation loop alone: re-fetch and confirm every deck we
+  // just created actually has cards before leaving it in place.
   const verifiedDecks = await fetchDecks(uid)
   const allSeededDecksHaveCards = createdDeckIds.every((deckId) => {
     const deck = verifiedDecks.find((item) => item.id === deckId)
@@ -1410,29 +1389,22 @@ async function performSeedSampleData(uid: string): Promise<boolean> {
 
   if (!allSeededDecksHaveCards) {
     await Promise.all(createdDeckIds.map((deckId) => deleteDeck(uid, deckId).catch(() => undefined)))
-    throw new Error('Sample deck verification failed: one or more seeded decks have no cards.')
+    throw new Error('Sample deck setup failed. Please try again.')
   }
-
-  await markSampleDataSeeded(uid)
-  return true
 }
 
-const inFlightSampleSeeds = new Map<string, Promise<boolean>>()
+const inFlightSampleLoads = new Map<string, Promise<void>>()
 
-export function seedSampleDataIfNeeded(uid: string): Promise<boolean> {
-  if (isLocalDevBypassUserId(uid)) {
-    return Promise.resolve(false)
-  }
-
-  const inFlight = inFlightSampleSeeds.get(uid)
+export function loadSampleData(uid: string): Promise<void> {
+  const inFlight = inFlightSampleLoads.get(uid)
   if (inFlight) {
     return inFlight
   }
 
-  const attempt = performSeedSampleData(uid).finally(() => {
-    inFlightSampleSeeds.delete(uid)
+  const attempt = performLoadSampleData(uid).finally(() => {
+    inFlightSampleLoads.delete(uid)
   })
-  inFlightSampleSeeds.set(uid, attempt)
+  inFlightSampleLoads.set(uid, attempt)
   return attempt
 }
 

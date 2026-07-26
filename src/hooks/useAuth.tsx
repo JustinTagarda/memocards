@@ -17,14 +17,14 @@ import {
 } from '../lib/devBypass'
 import { env, hasSupabaseEnvironment } from '../lib/env'
 import { getSupabaseBrowserClient } from '../lib/supabase/browser'
-import { ensureUserProfile, seedSampleDataIfNeeded } from '../services/memocards'
+import { ensureUserProfile } from '../services/memocards'
 
 interface AuthContextValue {
   user: User | null
   loading: boolean
   error: string | null
-  justSeededSamples: boolean
-  dismissSampleNotice: () => void
+  sampleOfferDismissed: boolean
+  dismissSampleOffer: () => void
   signIn: () => Promise<void>
   signOutUser: () => Promise<void>
 }
@@ -39,12 +39,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [justSeededSamples, setJustSeededSamples] = useState(false)
+  const [sampleOfferDismissed, setSampleOfferDismissed] = useState(false)
 
   useEffect(() => {
     if (isLocalDevBypassEnabled) {
-      setUser(hasLocalDevBypassSession() ? LOCAL_DEV_BYPASS_USER : null)
+      const bypassUser = hasLocalDevBypassSession() ? LOCAL_DEV_BYPASS_USER : null
+      setUser(bypassUser)
       setLoading(false)
+      if (bypassUser) {
+        setSampleOfferDismissed(false)
+      }
       return
     }
 
@@ -71,9 +75,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (data.user) {
         try {
           await ensureUserProfile(data.user)
-          const seeded = await seedSampleDataIfNeeded(data.user.id)
-          if (mounted && seeded) {
-            setJustSeededSamples(true)
+          if (mounted) {
+            setSampleOfferDismissed(false)
           }
         } catch (reason) {
           if (mounted) {
@@ -93,10 +96,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
       if (session?.user) {
         void ensureUserProfile(session.user)
-          .then(() => seedSampleDataIfNeeded(session.user.id))
-          .then((seeded) => {
-            if (mounted && seeded) {
-              setJustSeededSamples(true)
+          .then(() => {
+            if (mounted) {
+              setSampleOfferDismissed(false)
             }
           })
           .catch((reason: unknown) => {
@@ -117,9 +119,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
     user,
     loading,
     error,
-    justSeededSamples,
-    dismissSampleNotice() {
-      setJustSeededSamples(false)
+    sampleOfferDismissed,
+    dismissSampleOffer() {
+      setSampleOfferDismissed(true)
     },
     async signIn() {
       if (isLocalDevBypassEnabled) {

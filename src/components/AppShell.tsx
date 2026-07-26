@@ -6,10 +6,9 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, type PropsWithChildren } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { useUserProfile } from '../hooks/useMemoCards'
-import { SampleDataModal } from './SampleDataModal'
 
 export function AppShell({ children }: PropsWithChildren) {
-  const { user, signOutUser, justSeededSamples } = useAuth()
+  const { user, signOutUser } = useAuth()
   const { data: profile, loading: profileLoading } = useUserProfile(user?.id)
   const pathname = usePathname()
   const router = useRouter()
@@ -208,8 +207,6 @@ export function AppShell({ children }: PropsWithChildren) {
       <main className="app-main">
         {children}
       </main>
-
-      {justSeededSamples ? <SampleDataModal /> : null}
     </div>
   )
 }

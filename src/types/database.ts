@@ -52,7 +52,6 @@ export interface Database {
           longest_streak: number
           last_study_date: string | null
           total_sessions: number
-          sample_data_seeded_at: string | null
           created_at: string
           updated_at: string
         }
@@ -66,7 +65,6 @@ export interface Database {
           longest_streak?: number
           last_study_date?: string | null
           total_sessions?: number
-          sample_data_seeded_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -79,7 +77,6 @@ export interface Database {
           longest_streak?: number
           last_study_date?: string | null
           total_sessions?: number
-          sample_data_seeded_at?: string | null
           updated_at?: string
         }
       }

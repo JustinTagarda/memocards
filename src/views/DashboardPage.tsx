@@ -1,20 +1,21 @@
 'use client'
 
 import { BookOpen, FolderOpen, FolderPlus, History, Import, PencilLine, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Modal } from '../components/Modal'
+import { SampleDataModal } from '../components/SampleDataModal'
 import { FolderForm, ImportDialog } from '../components/forms'
 import { useAuth } from '../hooks/useAuth'
 import { firstResourceError, useDecks, useFolders, useUserProfile } from '../hooks/useMemoCards'
 import { formatCalendarDate, formatSmartDate, pluralize } from '../lib/utils'
-import { createFolder, deleteDeck, importDeckBundle } from '../services/memocards'
+import { createFolder, deleteDeck, importDeckBundle, loadSampleData } from '../services/memocards'
 import type { Deck } from '../types/models'
 
 export function DashboardPage() {
-  const { user } = useAuth()
+  const { user, sampleOfferDismissed, dismissSampleOffer } = useAuth()
   const router = useRouter()
   const { data: profile, loading: profileLoading, error: profileError } = useUserProfile(user?.id)
   const { data: folders, error: foldersError } = useFolders(user?.id)
@@ -27,6 +28,11 @@ export function DashboardPage() {
   const [deckToDelete, setDeckToDelete] = useState<Deck | null>(null)
   const [showImportModal, setShowImportModal] = useState(false)
   const [showFolderModal, setShowFolderModal] = useState(false)
+  const [showSampleOffer, setShowSampleOffer] = useState(false)
+  const [sampleOfferLoading, setSampleOfferLoading] = useState(false)
+  const [sampleOfferError, setSampleOfferError] = useState<string | null>(null)
+  const hasCheckedInitialSampleOffer = useRef(false)
+  const hasSeenLoadingRef = useRef(false)
 
   const tags = useMemo(
     () => Array.from(new Set(decks.flatMap((deck) => deck.tags))).sort((left, right) => left.localeCompare(right)),
@@ -51,6 +57,48 @@ export function DashboardPage() {
   const totalSessions = profile?.summary.totalSessions ?? 0
   const dailyGoal = profile?.settings.dailyGoal ?? 20
   const lastStudyDate = profile?.summary.lastStudyDate
+
+  useEffect(() => {
+    if (isLoading) {
+      // Track that a real fetch cycle happened, so a misleading "not loading"
+      // render before `user` resolves can't be mistaken for a finished load.
+      hasSeenLoadingRef.current = true
+      return
+    }
+    if (!user || !hasSeenLoadingRef.current || hasCheckedInitialSampleOffer.current) {
+      return
+    }
+    hasCheckedInitialSampleOffer.current = true
+    if (decks.length === 0 && !sampleOfferDismissed) {
+      setShowSampleOffer(true)
+    }
+  }, [user, isLoading, decks.length, sampleOfferDismissed])
+
+  async function handleConfirmSampleOffer() {
+    if (!user) {
+      return
+    }
+    setSampleOfferLoading(true)
+    setSampleOfferError(null)
+    try {
+      await loadSampleData(user.id)
+      setShowSampleOffer(false)
+      dismissSampleOffer()
+    } catch (reason) {
+      setSampleOfferError(
+        reason instanceof Error ? reason.message : 'Something went wrong loading sample decks.',
+      )
+    } finally {
+      setSampleOfferLoading(false)
+    }
+  }
+
+  function handleCancelSampleOffer() {
+    setShowSampleOffer(false)
+    setSampleOfferError(null)
+    dismissSampleOffer()
+  }
+
   if (!user) {
     return null
   }
@@ -342,8 +390,13 @@ export function DashboardPage() {
           onCancel={() => setDeckToDelete(null)}
           onConfirm={async () => {
             const targetDeck = deckToDelete
+            const wasLastDeck = decks.length === 1 && decks[0]?.id === targetDeck.id
             setDeckToDelete(null)
             await deleteDeck(user.id, targetDeck.id)
+            if (wasLastDeck) {
+              setSampleOfferError(null)
+              setShowSampleOffer(true)
+            }
           }}
         />
       )}
@@ -359,6 +412,15 @@ export function DashboardPage() {
             }}
           />
         </Modal>
+      )}
+
+      {showSampleOffer && (
+        <SampleDataModal
+          loading={sampleOfferLoading}
+          error={sampleOfferError}
+          onCancel={handleCancelSampleOffer}
+          onConfirm={handleConfirmSampleOffer}
+        />
       )}
     </div>
   )
