@@ -57,8 +57,6 @@ const DEFAULT_AI_EVALUATION: CardAiEvaluation = {
   lastRequestedAt: null,
 }
 
-const SAMPLE_DECK_DESCRIPTION = 'Sample deck — explore freely, delete anytime.'
-
 function sampleExpectedAnswer(canonical: string, keywords: string[], rubric: string): CardDraft['expectedAnswer'] {
   return { canonical, acceptedVariants: [], keywords, rubric }
 }
@@ -75,7 +73,7 @@ const SAMPLE_DECKS: { draft: DeckDraft; cards: CardDraft[] }[] = [
   {
     draft: {
       title: 'Sample: Spanish Basics',
-      description: SAMPLE_DECK_DESCRIPTION,
+      description: 'Basic recall flashcards — see spaced repetition scheduling in action.',
       folderId: null,
       tags: ['sample'],
       preferences: {
@@ -98,7 +96,7 @@ const SAMPLE_DECKS: { draft: DeckDraft; cards: CardDraft[] }[] = [
   {
     draft: {
       title: 'Sample: Cell Biology (Short Answer)',
-      description: SAMPLE_DECK_DESCRIPTION,
+      description: 'Type short answers and get graded against key concepts, not exact wording.',
       folderId: null,
       tags: ['sample'],
       preferences: {
@@ -196,7 +194,7 @@ const SAMPLE_DECKS: { draft: DeckDraft; cards: CardDraft[] }[] = [
   {
     draft: {
       title: 'Sample: World Capitals Quiz',
-      description: SAMPLE_DECK_DESCRIPTION,
+      description: 'Multiple-choice quiz with audio playback — tap Study to hear cards read aloud.',
       folderId: null,
       tags: ['sample'],
       preferences: {

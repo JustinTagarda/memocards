@@ -2487,9 +2487,10 @@ input[type='file'] {
 .deck-card__delete {
   justify-content: center;
   gap: 0.4rem;
+  margin-top: var(--space-1);
   color: var(--danger);
-  border-color: rgba(194, 65, 12, 0.14);
-  background: rgba(255, 248, 245, 0.88);
+  border-color: rgba(194, 65, 12, 0.22);
+  background: rgba(255, 241, 235, 0.95);
 }
 
 .deck-card h2,
@@ -3583,6 +3584,17 @@ input[type='file'] {
   .deck-card__footer {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;
+  }
+
+  /* Group tags and actions together at the row end instead of splitting them
+     across a 1fr/auto grid — short tag text (or none) otherwise leaves a
+     large empty gap before the button block. */
+  .deck-card__footer--dashboard {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2) var(--space-4);
   }
 
   /* Deck card rows stack copy above a footer line instead of using a second
