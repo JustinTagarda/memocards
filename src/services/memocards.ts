@@ -1400,6 +1400,19 @@ async function performSeedSampleData(uid: string): Promise<boolean> {
     throw error
   }
 
+  // Never stamp sample_data_seeded_at on trust alone: re-fetch and confirm every
+  // deck we just created actually has cards before treating this as a success.
+  const verifiedDecks = await fetchDecks(uid)
+  const allSeededDecksHaveCards = createdDeckIds.every((deckId) => {
+    const deck = verifiedDecks.find((item) => item.id === deckId)
+    return deck !== undefined && deck.counts.totalCards > 0
+  })
+
+  if (!allSeededDecksHaveCards) {
+    await Promise.all(createdDeckIds.map((deckId) => deleteDeck(uid, deckId).catch(() => undefined)))
+    throw new Error('Sample deck verification failed: one or more seeded decks have no cards.')
+  }
+
   await markSampleDataSeeded(uid)
   return true
 }
