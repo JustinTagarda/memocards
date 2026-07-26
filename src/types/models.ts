@@ -59,6 +59,7 @@ export interface Deck {
   preferences: DeckStudyPreferences
   exportConfig: DeckExportConfig
   aiConfig: DeckAiConfig
+  isSample: boolean
 }
 
 export interface ReviewState {
@@ -235,6 +236,7 @@ export interface DeckDraft {
   folderId: string | null
   tags: string[]
   preferences: DeckStudyPreferences
+  isSample?: boolean
 }
 
 export interface CardDraft {

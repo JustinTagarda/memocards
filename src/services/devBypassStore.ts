@@ -160,6 +160,7 @@ function seedStore(): DevStoreState {
       provider: 'not_configured',
       rubricVersion: 'future-v1',
     },
+    isSample: true,
   }
 
   const card: Card = {
@@ -368,6 +369,7 @@ function makeDeckFromDraft(draft: DeckDraft, deckId: string, timestamp: string):
       provider: 'not_configured',
       rubricVersion: 'future-v1',
     },
+    isSample: draft.isSample ?? false,
   }
 }
 

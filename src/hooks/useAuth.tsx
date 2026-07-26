@@ -17,12 +17,14 @@ import {
 } from '../lib/devBypass'
 import { env, hasSupabaseEnvironment } from '../lib/env'
 import { getSupabaseBrowserClient } from '../lib/supabase/browser'
-import { ensureUserProfile } from '../services/memocards'
+import { ensureUserProfile, seedSampleDataIfNeeded } from '../services/memocards'
 
 interface AuthContextValue {
   user: User | null
   loading: boolean
   error: string | null
+  justSeededSamples: boolean
+  dismissSampleNotice: () => void
   signIn: () => Promise<void>
   signOutUser: () => Promise<void>
 }
@@ -37,6 +39,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [justSeededSamples, setJustSeededSamples] = useState(false)
 
   useEffect(() => {
     if (isLocalDevBypassEnabled) {
@@ -68,6 +71,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (data.user) {
         try {
           await ensureUserProfile(data.user)
+          const seeded = await seedSampleDataIfNeeded(data.user.id)
+          if (mounted && seeded) {
+            setJustSeededSamples(true)
+          }
         } catch (reason) {
           if (mounted) {
             setError(reason instanceof Error ? reason.message : 'Unable to initialize your account.')
@@ -85,11 +92,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
       })
 
       if (session?.user) {
-        void ensureUserProfile(session.user).catch((reason: unknown) => {
-          if (mounted) {
-            setError(reason instanceof Error ? reason.message : 'Unable to initialize your account.')
-          }
-        })
+        void ensureUserProfile(session.user)
+          .then(() => seedSampleDataIfNeeded(session.user.id))
+          .then((seeded) => {
+            if (mounted && seeded) {
+              setJustSeededSamples(true)
+            }
+          })
+          .catch((reason: unknown) => {
+            if (mounted) {
+              setError(reason instanceof Error ? reason.message : 'Unable to initialize your account.')
+            }
+          })
       }
     })
 
@@ -103,6 +117,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     user,
     loading,
     error,
+    justSeededSamples,
+    dismissSampleNotice() {
+      setJustSeededSamples(false)
+    },
     async signIn() {
       if (isLocalDevBypassEnabled) {
         document.cookie = `${LOCAL_DEV_BYPASS_COOKIE}=1; Path=/; SameSite=Lax`

@@ -52,6 +52,7 @@ export interface Database {
           longest_streak: number
           last_study_date: string | null
           total_sessions: number
+          sample_data_seeded_at: string | null
           created_at: string
           updated_at: string
         }
@@ -65,6 +66,7 @@ export interface Database {
           longest_streak?: number
           last_study_date?: string | null
           total_sessions?: number
+          sample_data_seeded_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -77,6 +79,7 @@ export interface Database {
           longest_streak?: number
           last_study_date?: string | null
           total_sessions?: number
+          sample_data_seeded_at?: string | null
           updated_at?: string
         }
       }
@@ -115,6 +118,7 @@ export interface Database {
           preferences: Json
           export_config: Json
           ai_config: Json
+          is_sample: boolean
           created_at: string
           updated_at: string
           last_studied_at: string | null
@@ -130,6 +134,7 @@ export interface Database {
           preferences?: Json
           export_config?: Json
           ai_config?: Json
+          is_sample?: boolean
           created_at?: string
           updated_at?: string
           last_studied_at?: string | null
@@ -143,6 +148,7 @@ export interface Database {
           preferences?: Json
           export_config?: Json
           ai_config?: Json
+          is_sample?: boolean
           updated_at?: string
           last_studied_at?: string | null
         }

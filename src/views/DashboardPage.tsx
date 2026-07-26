@@ -253,7 +253,10 @@ export function DashboardPage() {
               <div className="deck-card__header">
                 <div className="deck-card__identity">
                   {folder ? <small className="deck-card__meta-line">{folder.name}</small> : null}
-                  <h2>{deck.title}</h2>
+                  <h2>
+                    {deck.title}
+                    {deck.isSample ? <span className="status-pill status-pill--sample">Sample</span> : null}
+                  </h2>
                   {deck.description ? <p>{deck.description}</p> : null}
                 </div>
                 <div className="deck-card__status">

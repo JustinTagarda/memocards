@@ -57,6 +57,167 @@ const DEFAULT_AI_EVALUATION: CardAiEvaluation = {
   lastRequestedAt: null,
 }
 
+const SAMPLE_DECK_DESCRIPTION = 'Sample deck — explore freely, delete anytime.'
+
+function sampleExpectedAnswer(canonical: string, keywords: string[], rubric: string): CardDraft['expectedAnswer'] {
+  return { canonical, acceptedVariants: [], keywords, rubric }
+}
+
+function sampleChoices(correctIndex: number, options: string[]): CardDraft['choices'] {
+  return options.map((text, index) => ({
+    id: `choice-${index + 1}`,
+    text,
+    isCorrect: index === correctIndex,
+  }))
+}
+
+const SAMPLE_DECKS: { draft: DeckDraft; cards: CardDraft[] }[] = [
+  {
+    draft: {
+      title: 'Sample: Spanish Basics',
+      description: SAMPLE_DECK_DESCRIPTION,
+      folderId: null,
+      tags: ['sample'],
+      preferences: {
+        defaultMode: 'review',
+        shuffleByDefault: false,
+        autoPlayAudio: false,
+        dailyGoal: DEFAULT_SETTINGS.dailyGoal,
+        entryDefaults: { cardType: 'basic', tags: ['sample'] },
+      },
+      isSample: true,
+    },
+    cards: [
+      { type: 'basic', front: 'Hola', back: 'Hello', prompt: 'Hola', answer: 'Hello', explanation: '', choices: [], expectedAnswer: sampleExpectedAnswer('', [], ''), tags: ['sample'], isFavorite: false },
+      { type: 'basic', front: 'Gracias', back: 'Thank you', prompt: 'Gracias', answer: 'Thank you', explanation: '', choices: [], expectedAnswer: sampleExpectedAnswer('', [], ''), tags: ['sample'], isFavorite: false },
+      { type: 'basic', front: 'Por favor', back: 'Please', prompt: 'Por favor', answer: 'Please', explanation: '', choices: [], expectedAnswer: sampleExpectedAnswer('', [], ''), tags: ['sample'], isFavorite: false },
+      { type: 'basic', front: 'Buenos días', back: 'Good morning', prompt: 'Buenos días', answer: 'Good morning', explanation: '', choices: [], expectedAnswer: sampleExpectedAnswer('', [], ''), tags: ['sample'], isFavorite: false },
+      { type: 'basic', front: 'Amigo', back: 'Friend', prompt: 'Amigo', answer: 'Friend', explanation: '', choices: [], expectedAnswer: sampleExpectedAnswer('', [], ''), tags: ['sample'], isFavorite: false },
+    ],
+  },
+  {
+    draft: {
+      title: 'Sample: Cell Biology (Short Answer)',
+      description: SAMPLE_DECK_DESCRIPTION,
+      folderId: null,
+      tags: ['sample'],
+      preferences: {
+        defaultMode: 'review',
+        shuffleByDefault: false,
+        autoPlayAudio: false,
+        dailyGoal: DEFAULT_SETTINGS.dailyGoal,
+        entryDefaults: { cardType: 'explanation', tags: ['sample'] },
+      },
+      isSample: true,
+    },
+    cards: [
+      {
+        type: 'explanation',
+        front: 'What is the powerhouse of the cell?',
+        back: 'The mitochondrion generates most of the cell’s ATP through cellular respiration.',
+        prompt: 'What is the powerhouse of the cell, and why?',
+        answer: 'The mitochondrion generates most of the cell’s ATP through cellular respiration.',
+        explanation: 'Type a short answer — your response is graded against key concepts, not an exact match.',
+        choices: [],
+        expectedAnswer: sampleExpectedAnswer(
+          'The mitochondrion produces ATP through cellular respiration.',
+          ['mitochondria', 'ATP', 'cellular respiration'],
+          'Award credit for identifying the mitochondrion and its role in energy production.',
+        ),
+        tags: ['sample'],
+        isFavorite: false,
+      },
+      {
+        type: 'explanation',
+        front: 'What does the cell membrane do?',
+        back: 'It regulates what enters and exits the cell, maintaining a stable internal environment.',
+        prompt: 'What is the main function of the cell membrane?',
+        answer: 'It regulates what enters and exits the cell, maintaining a stable internal environment.',
+        explanation: 'Type a short answer — your response is graded against key concepts, not an exact match.',
+        choices: [],
+        expectedAnswer: sampleExpectedAnswer(
+          'The cell membrane controls the movement of substances in and out of the cell.',
+          ['selective permeability', 'membrane', 'homeostasis'],
+          'Award credit for describing selective control of substances entering or leaving the cell.',
+        ),
+        tags: ['sample'],
+        isFavorite: false,
+      },
+      {
+        type: 'explanation',
+        front: 'Where is genetic material stored in a eukaryotic cell?',
+        back: 'DNA is stored in the nucleus, enclosed by the nuclear envelope.',
+        prompt: 'Where is a eukaryotic cell’s genetic material stored?',
+        answer: 'DNA is stored in the nucleus, enclosed by the nuclear envelope.',
+        explanation: 'Type a short answer — your response is graded against key concepts, not an exact match.',
+        choices: [],
+        expectedAnswer: sampleExpectedAnswer(
+          'DNA is stored in the nucleus.',
+          ['nucleus', 'DNA', 'nuclear envelope'],
+          'Award credit for naming the nucleus as the storage site of DNA.',
+        ),
+        tags: ['sample'],
+        isFavorite: false,
+      },
+      {
+        type: 'explanation',
+        front: 'What is the role of ribosomes?',
+        back: 'Ribosomes synthesize proteins by translating messenger RNA.',
+        prompt: 'What do ribosomes do?',
+        answer: 'Ribosomes synthesize proteins by translating messenger RNA.',
+        explanation: 'Type a short answer — your response is graded against key concepts, not an exact match.',
+        choices: [],
+        expectedAnswer: sampleExpectedAnswer(
+          'Ribosomes build proteins from mRNA.',
+          ['protein synthesis', 'mRNA', 'translation'],
+          'Award credit for connecting ribosomes to protein synthesis/translation.',
+        ),
+        tags: ['sample'],
+        isFavorite: false,
+      },
+      {
+        type: 'explanation',
+        front: 'What distinguishes a plant cell from an animal cell?',
+        back: 'Plant cells have a cell wall, chloroplasts, and a large central vacuole; animal cells do not.',
+        prompt: 'Name two structures found in plant cells but not animal cells.',
+        answer: 'Plant cells have a cell wall, chloroplasts, and a large central vacuole; animal cells do not.',
+        explanation: 'Type a short answer — your response is graded against key concepts, not an exact match.',
+        choices: [],
+        expectedAnswer: sampleExpectedAnswer(
+          'Plant cells have a cell wall and chloroplasts, which animal cells lack.',
+          ['cell wall', 'chloroplast', 'vacuole'],
+          'Award credit for naming at least one plant-specific structure such as cell wall or chloroplast.',
+        ),
+        tags: ['sample'],
+        isFavorite: false,
+      },
+    ],
+  },
+  {
+    draft: {
+      title: 'Sample: World Capitals Quiz',
+      description: SAMPLE_DECK_DESCRIPTION,
+      folderId: null,
+      tags: ['sample'],
+      preferences: {
+        defaultMode: 'review',
+        shuffleByDefault: true,
+        autoPlayAudio: true,
+        dailyGoal: DEFAULT_SETTINGS.dailyGoal,
+        entryDefaults: { cardType: 'multiple_choice', tags: ['sample'] },
+      },
+      isSample: true,
+    },
+    cards: [
+      { type: 'multiple_choice', front: 'What is the capital of Japan?', back: 'Tokyo', prompt: 'What is the capital of Japan?', answer: 'Tokyo', explanation: '', choices: sampleChoices(0, ['Tokyo', 'Osaka', 'Kyoto', 'Nagoya']), expectedAnswer: sampleExpectedAnswer('', [], ''), tags: ['sample'], isFavorite: false },
+      { type: 'multiple_choice', front: 'What is the capital of France?', back: 'Paris', prompt: 'What is the capital of France?', answer: 'Paris', explanation: '', choices: sampleChoices(1, ['Lyon', 'Paris', 'Marseille', 'Nice']), expectedAnswer: sampleExpectedAnswer('', [], ''), tags: ['sample'], isFavorite: false },
+      { type: 'multiple_choice', front: 'What is the capital of Australia?', back: 'Canberra', prompt: 'What is the capital of Australia?', answer: 'Canberra', explanation: '', choices: sampleChoices(2, ['Sydney', 'Melbourne', 'Canberra', 'Perth']), expectedAnswer: sampleExpectedAnswer('', [], ''), tags: ['sample'], isFavorite: false },
+      { type: 'multiple_choice', front: 'What is the capital of Brazil?', back: 'Brasília', prompt: 'What is the capital of Brazil?', answer: 'Brasília', explanation: '', choices: sampleChoices(3, ['Rio de Janeiro', 'São Paulo', 'Salvador', 'Brasília']), expectedAnswer: sampleExpectedAnswer('', [], ''), tags: ['sample'], isFavorite: false },
+      { type: 'multiple_choice', front: 'What is the capital of Egypt?', back: 'Cairo', prompt: 'What is the capital of Egypt?', answer: 'Cairo', explanation: '', choices: sampleChoices(0, ['Cairo', 'Alexandria', 'Giza', 'Luxor']), expectedAnswer: sampleExpectedAnswer('', [], ''), tags: ['sample'], isFavorite: false },
+    ],
+  },
+]
+
 type ProfileRow = Database['common']['Tables']['profiles']['Row']
 type UserSettingsRow = Database['memocards']['Tables']['user_settings']['Row']
 type FolderRow = Database['memocards']['Tables']['folders']['Row']
@@ -166,6 +327,7 @@ function normalizeDeck(row: DeckRow): Deck {
     preferences,
     exportConfig,
     aiConfig,
+    isSample: row.is_sample ?? false,
   }
 }
 
@@ -352,6 +514,7 @@ function createDeckRecord(uid: string, draft: DeckDraft, timestamp = nowIso()): 
       provider: 'not_configured',
       rubricVersion: 'future-v1',
     }),
+    is_sample: draft.isSample ?? false,
     created_at: timestamp,
     updated_at: timestamp,
     last_studied_at: null,
@@ -1194,6 +1357,43 @@ export async function importDeckBundle(
   await syncDeckCounts(uid, deckId)
   void requestAudioQueueProcessing(deckId)
   return deckId
+}
+
+export async function seedSampleDataIfNeeded(uid: string): Promise<boolean> {
+  if (isLocalDevBypassUserId(uid)) {
+    return false
+  }
+
+  const settingsRow = await fetchSettingsRow(uid)
+  if (settingsRow?.sample_data_seeded_at) {
+    return false
+  }
+
+  const timestamp = nowIso()
+  const existingDecks = await fetchDecks(uid)
+  if (existingDecks.length > 0) {
+    await assertNoError(
+      memocardsSchema()
+        .from('user_settings')
+        .update({ sample_data_seeded_at: timestamp })
+        .eq('user_id', uid),
+    )
+    return false
+  }
+
+  const settings = normalizeSettings(settingsRow)
+  for (const sampleDeck of SAMPLE_DECKS) {
+    await importDeckBundle(uid, sampleDeck.draft, sampleDeck.cards, settings)
+  }
+
+  await assertNoError(
+    memocardsSchema()
+      .from('user_settings')
+      .update({ sample_data_seeded_at: timestamp })
+      .eq('user_id', uid),
+  )
+
+  return true
 }
 
 export interface ExtractedImageTextPage {

@@ -20,6 +20,7 @@ MemoCards is a private, per-user Next.js flashcard app for spaced repetition, de
 - Public landing page at `/` with sign-in entry points and local dev bypass messaging.
 - Dashboard at `/app` showing due cards, streak, session totals, deck search, folder filtering, and tag filtering.
 - Create deck, import deck, and create folder actions from the dashboard.
+- Accounts with no decks are auto-seeded with 3 sample decks (covering basic recall, short-answer grading, and multiple-choice with audio) so new and empty accounts can try the app immediately; seeded decks carry a "Sample" badge and a one-time welcome modal explains they can be deleted freely.
 
 ### Deck Management
 
@@ -112,11 +113,19 @@ MemoCards is a private, per-user Next.js flashcard app for spaced repetition, de
 
 ## Database
 
+Supabase project:
+
+- Name: `justinapp-core`
+- Project ID (reference): `zdzrbpxzaakykixaaphu`
+- Region: `ap-northeast-2` (Seoul)
+- This is the project backing `NEXT_PUBLIC_SUPABASE_URL` in `.env.local`. When running Supabase CLI/dashboard tasks for MemoCards (applying migrations, checking logs, rotating keys), confirm the target project's Project ID matches `zdzrbpxzaakykixaaphu` — the Supabase org has other unrelated projects (e.g. `product-costing`) that must not be touched.
+
 Migrations:
 
 - `supabase/migrations/20260310230000_init_memocards.sql`
 - `supabase/migrations/20260320150000_add_audio_generation_queue.sql`
 - `supabase/migrations/20260718090000_queue_recovery_and_activity_pruning.sql`
+- `supabase/migrations/20260726024557_add_sample_deck_flags.sql`
 
 Primary tables and schemas:
 

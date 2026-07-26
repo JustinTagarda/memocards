@@ -106,6 +106,7 @@ export function buildDeckExportBundle(deck: Deck, cards: Card[]): DeckExportBund
       preferences: deck.preferences,
       exportConfig: deck.exportConfig,
       aiConfig: deck.aiConfig,
+      isSample: false,
     },
     cards: cards.map((card) => ({
       type: card.type,
