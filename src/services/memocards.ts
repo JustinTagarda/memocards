@@ -1359,41 +1359,68 @@ export async function importDeckBundle(
   return deckId
 }
 
-export async function seedSampleDataIfNeeded(uid: string): Promise<boolean> {
-  if (isLocalDevBypassUserId(uid)) {
-    return false
-  }
+async function markSampleDataSeeded(uid: string) {
+  await assertNoError(
+    memocardsSchema()
+      .from('user_settings')
+      .update({ sample_data_seeded_at: nowIso() })
+      .eq('user_id', uid),
+  )
+}
 
+async function performSeedSampleData(uid: string): Promise<boolean> {
   const settingsRow = await fetchSettingsRow(uid)
   if (settingsRow?.sample_data_seeded_at) {
     return false
   }
 
-  const timestamp = nowIso()
   const existingDecks = await fetchDecks(uid)
-  if (existingDecks.length > 0) {
-    await assertNoError(
-      memocardsSchema()
-        .from('user_settings')
-        .update({ sample_data_seeded_at: timestamp })
-        .eq('user_id', uid),
-    )
+  const realDecks = existingDecks.filter((deck) => !deck.isSample)
+  if (realDecks.length > 0) {
+    await markSampleDataSeeded(uid)
     return false
   }
 
-  const settings = normalizeSettings(settingsRow)
-  for (const sampleDeck of SAMPLE_DECKS) {
-    await importDeckBundle(uid, sampleDeck.draft, sampleDeck.cards, settings)
+  // Clean up empty sample decks left behind by a previous interrupted/failed attempt
+  // (e.g. a race between concurrent auth events) before retrying.
+  for (const deck of existingDecks) {
+    if (deck.counts.totalCards === 0) {
+      await deleteDeck(uid, deck.id)
+    }
   }
 
-  await assertNoError(
-    memocardsSchema()
-      .from('user_settings')
-      .update({ sample_data_seeded_at: timestamp })
-      .eq('user_id', uid),
-  )
+  const settings = normalizeSettings(settingsRow)
+  const createdDeckIds: string[] = []
+  try {
+    for (const sampleDeck of SAMPLE_DECKS) {
+      createdDeckIds.push(await importDeckBundle(uid, sampleDeck.draft, sampleDeck.cards, settings))
+    }
+  } catch (error) {
+    await Promise.all(createdDeckIds.map((deckId) => deleteDeck(uid, deckId).catch(() => undefined)))
+    throw error
+  }
 
+  await markSampleDataSeeded(uid)
   return true
+}
+
+const inFlightSampleSeeds = new Map<string, Promise<boolean>>()
+
+export function seedSampleDataIfNeeded(uid: string): Promise<boolean> {
+  if (isLocalDevBypassUserId(uid)) {
+    return Promise.resolve(false)
+  }
+
+  const inFlight = inFlightSampleSeeds.get(uid)
+  if (inFlight) {
+    return inFlight
+  }
+
+  const attempt = performSeedSampleData(uid).finally(() => {
+    inFlightSampleSeeds.delete(uid)
+  })
+  inFlightSampleSeeds.set(uid, attempt)
+  return attempt
 }
 
 export interface ExtractedImageTextPage {
