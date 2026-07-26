@@ -2486,7 +2486,8 @@ input[type='file'] {
 .deck-card__actions-main .ghost-button,
 .deck-card__actions-main .primary-button,
 .deck-card__delete {
-  flex: 1 1 7rem;
+  flex: 0 0 auto;
+  padding-inline: 0.75rem;
 }
 
 .deck-card__delete {
